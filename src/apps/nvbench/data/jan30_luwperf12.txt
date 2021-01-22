@@ -1,0 +1,34 @@
+[dwaddington@luwperf12 nvbench2]$ ./nvbench  --dram --nvdimm
+Running DRAM tests...
+DRAM_random_8byte_write: cycles per op: 33.333333 nsec
+DRAM_random_8byte_read: cycles per op: 16.296296 nsec
+DRAM_random_8byte_memcpy: cycles per op: 48.148148 nsec
+DRAM_random_64byte_memcpy: cycles per op: 69.629630 nsec
+DRAM_random_1024byte_memcpy: cycles per op: 366.296296 nsec
+DRAM_random_4096byte_memcpy: cycles per op: 723.703704 nsec
+DRAM_random_8byte_memset: cycles per op: 29.259259 nsec
+DRAM_random_64byte_memset: cycles per op: 58.518519 nsec
+DRAM_random_1024byte_memset: cycles per op: 500.000000 nsec
+DRAM_random_4096byte_memset: cycles per op: 836.296296 nsec
+Running NVDIMM tests...
+[LOG]:pbase: 0x7f9240383000
+[LOG]:pbase: 0x7f8e00383000
+NVDIMM_random_8byte_write_persist: cycles per op: 122.592593 nsec
+NVDIMM_random_8byte_write: cycles per op: 35.925926 nsec
+NVDIMM_random_8byte_read: cycles per op: 22.592593 nsec
+NVDIMM_random_8byte_memcpy_nodrain: cycles per op: 89.629630 nsec
+NVDIMM_random_8byte_memcpy_persist: cycles per op: 150.000000 nsec
+NVDIMM_random_64byte_memcpy_nodrain: cycles per op: 124.074074 nsec
+NVDIMM_random_64byte_memcpy_persist: cycles per op: 193.703704 nsec
+NVDIMM_random_1024byte_memcpy_nodrain: cycles per op: 714.444444 nsec
+NVDIMM_random_1024byte_memcpy_persist: cycles per op: 717.037037 nsec
+NVDIMM_random_4096byte_memcpy_nodrain: cycles per op: 1908.148148 nsec
+NVDIMM_random_4096byte_memcpy_persist: cycles per op: 1908.148148 nsec
+NVDIMM_random_8byte_memset_nodrain: cycles per op: 47.407407 nsec
+NVDIMM_random_8byte_memset_persist: cycles per op: 127.037037 nsec
+NVDIMM_random_64byte_memset_nodrain: cycles per op: 74.074074 nsec
+NVDIMM_random_64byte_memset_persist: cycles per op: 150.740741 nsec
+NVDIMM_random_1024byte_memset_nodrain: cycles per op: 568.888889 nsec
+NVDIMM_random_1024byte_memset_persist: cycles per op: 576.296296 nsec
+NVDIMM_random_4096byte_memset_nodrain: cycles per op: 1330.740741 nsec
+NVDIMM_random_4096byte_memset_persist: cycles per op: 1334.074074 nsec

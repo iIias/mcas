@@ -5,6 +5,10 @@ add_compile_options(-pedantic -Wall -Wextra -Werror -Wcast-align -Wcast-qual -Wc
 add_subdirectory(kvstore-perf)
 add_subdirectory(ado-perf)
 
+if(BUILD_NVBENCH)
+  add_subdirectory(nvbench)
+endif()
+
 if(IS_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/ycsb-perf")
   add_subdirectory(ycsb-perf)
 endif()

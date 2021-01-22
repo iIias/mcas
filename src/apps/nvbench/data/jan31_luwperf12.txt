@@ -1,0 +1,59 @@
+[dwaddington@luwperf12 nvbench2]$ ./nvbench --dram --nvdimm --clkfreq=2.7
+[LOG]:clock frequency: 2.700000 GHz
+Running DRAM tests...
+DRAM_random_8byte_write: per op: 34.814816 nsec
+DRAM_random_8byte_read: per op: 
+DRAM_random_8byte_memcpy: per op: 47.777779 nsec
+DRAM_random_64byte_memcpy: per op: 81.111107 nsec
+DRAM_random_1024byte_memcpy: per op: 363.333313 nsec
+DRAM_random_4096byte_memcpy: per op: 733.703674 nsec
+DRAM_random_8byte_memset: per op: 29.259258 nsec
+DRAM_random_64byte_memset: per op: 65.555557 nsec
+DRAM_random_1024byte_memset: per op: 518.148132 nsec
+DRAM_random_4096byte_memset: per op: 841.111084 nsec
+DRAM_sequential_8byte_memcpy: per op: 5.925926 nsec
+DRAM_sequential_64byte_memcpy: per op: 7.037037 nsec
+DRAM_sequential_1024byte_memcpy: per op: 13.703704 nsec
+DRAM_sequential_4096byte_memcpy: per op: 26.296295 nsec
+DRAM_sequential_8byte_memset: per op: 5.185185 nsec
+DRAM_sequential_64byte_memset: per op: 4.814815 nsec
+DRAM_sequential_1024byte_memset: per op: 11.851851 nsec
+DRAM_sequential_4096byte_memset: per op: 32.222221 nsec
+Running NVDIMM tests...
+[LOG]:pbase: 0x7f99c0383000
+[LOG]:pbase: 0x7f9580383000
+NVDIMM_random_8byte_write_persist: per op: 123.703705 nsec
+NVDIMM_random_8byte_write: per op: 36.296295 nsec
+NVDIMM_random_8byte_read: per op: 0.000000 nsec
+NVDIMM_random_8byte_memcpy_nodrain: per op: 86.666664 nsec
+NVDIMM_random_8byte_memcpy_persist: per op: 145.925919 nsec
+NVDIMM_random_64byte_memcpy_nodrain: per op: 123.333328 nsec
+NVDIMM_random_64byte_memcpy_persist: per op: 190.740738 nsec
+NVDIMM_random_1024byte_memcpy_nodrain: per op: 710.000000 nsec
+NVDIMM_random_1024byte_memcpy_persist: per op: 715.925903 nsec
+NVDIMM_random_4096byte_memcpy_nodrain: per op: 1902.962891 nsec
+NVDIMM_random_4096byte_memcpy_persist: per op: 1908.148071 nsec
+NVDIMM_random_8byte_memset_nodrain: per op: 41.851852 nsec
+NVDIMM_random_8byte_memset_persist: per op: 124.814812 nsec
+NVDIMM_random_64byte_memset_nodrain: per op: 71.851852 nsec
+NVDIMM_random_64byte_memset_persist: per op: 148.148148 nsec
+NVDIMM_random_1024byte_memset_nodrain: per op: 570.000000 nsec
+NVDIMM_random_1024byte_memset_persist: per op: 572.222229 nsec
+NVDIMM_random_4096byte_memset_nodrain: per op: 1330.000000 nsec
+NVDIMM_random_4096byte_memset_persist: per op: 1332.592529 nsec
+NVDIMM_sequential_8byte_memcpy_nodrain: per op: 168.888885 nsec
+NVDIMM_sequential_8byte_memcpy_persist: per op: 181.851852 nsec
+NVDIMM_sequential_64byte_memcpy_nodrain: per op: 202.222214 nsec
+NVDIMM_sequential_64byte_memcpy_persist: per op: 206.296295 nsec
+NVDIMM_sequential_1024byte_memcpy_nodrain: per op: 574.814819 nsec
+NVDIMM_sequential_1024byte_memcpy_persist: per op: 577.407410 nsec
+NVDIMM_sequential_4096byte_memcpy_nodrain: per op: 1230.000000 nsec
+NVDIMM_sequential_4096byte_memcpy_persist: per op: 1232.222168 nsec
+NVDIMM_sequential_8byte_memset_nodrain: per op: 167.407410 nsec
+NVDIMM_sequential_8byte_memset_persist: per op: 180.740738 nsec
+NVDIMM_sequential_64byte_memset_nodrain: per op: 200.740738 nsec
+NVDIMM_sequential_64byte_memset_persist: per op: 205.555557 nsec
+NVDIMM_sequential_1024byte_memset_nodrain: per op: 532.962952 nsec
+NVDIMM_sequential_1024byte_memset_persist: per op: 534.074036 nsec
+NVDIMM_sequential_4096byte_memset_nodrain: per op: 1181.851807 nsec
+NVDIMM_sequential_4096byte_memset_persist: per op: 1184.444458 nsec
