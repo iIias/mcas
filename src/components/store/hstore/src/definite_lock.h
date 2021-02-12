@@ -23,6 +23,8 @@
 #include "is_locked.h"
 #include "monitor_pin.h"
 
+#include <common/perf/tm.h>
+
 #include <stdexcept>
 #include <tuple>
 
@@ -36,8 +38,12 @@ template <typename Table, typename Allocator>
 		template <typename K>
 			definite_lock(
 				AK_ACTUAL
-				table_t &map_, const K &key_, Allocator al_)
-				: _it(map_.find(key_))
+				TM_ACTUAL
+				table_t & map_
+				, const K &key_
+				, Allocator al_
+			)
+				: _it(map_.find(TM_REF key_))
 			{
 				if ( _it == map_.end() )
 				{
@@ -73,6 +79,25 @@ template <typename Table, typename Allocator>
 				}
 			}
 
+		~definite_lock()
+		{
+			try
+			{
+				if ( ! perishable_expiry::is_current() )
+				{
+					/* release lock */
+					const auto &d = data();
+					d.unlock_exclusive();
+				}
+			}
+			catch ( const Exception & )
+			{
+			}
+			catch ( const std::exception & )
+			{
+			}
+		}
+
 		auto &mapped() const
 		{
 			return _it->second;
@@ -82,25 +107,6 @@ template <typename Table, typename Allocator>
 		{
 			auto &m = mapped();
 			return std::get<0>(m);
-		}
-
-		~definite_lock()
-		{
-			try
-			{
-				if ( ! perishable_expiry::is_current() )
-				{
-					/* release lock */
-					const auto &d = data();
-					d.unlock();
-				}
-			}
-			catch ( const Exception & )
-			{
-			}
-			catch ( const std::exception & )
-			{
-			}
 		}
 	};
 

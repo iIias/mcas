@@ -15,11 +15,16 @@
 #include "clean_align.h"
 #include "definite_lock.h"
 #include "lock_impl.h"
+#include "lock_state.h"
+#include "logging.h" /* PREFIX */
 #include "key_not_found.h"
 #include "pool_iterator.h"
-#include "logging.h" /* PREFIX */
 #include "monitor_emplace.h"
 #include "monitor_pin.h"
+#include <common/perf/tm.h>
+#if 0
+#include <common/to_string.h>
+#endif
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wold-style-cast"
@@ -116,19 +121,21 @@ template <typename Handle, typename Allocator, typename Table, typename LockType
 template <typename Handle, typename Allocator, typename Table, typename LockType>
 	void session<Handle, Allocator, Table, LockType>::set_permission_from_create(const string_view user_)
 	{
+		TM_ROOT()
 		this->_access_allowed = std::array<impl::access::access_type, pool_type::persist_data_type::ix_count>{impl::access::all, impl::access::all};
 		/* New pool. If user name was provided (and access controls not diabled), add access control elements */
 		if ( user_.data() && ! std::getenv("MCAS_NO_ACCESS_CONTROL") )
 		{
 			auto access_all_string = std::to_string(impl::access::all);
-			insert(AK_INSTANCE this->ac_prefix + "control." + std::string(user_.data(), user_.size()), access_all_string.data(), access_all_string.size());
-			insert(AK_INSTANCE this->ac_prefix + "data." + std::string(user_.data(), user_.size()), access_all_string.data(), access_all_string.size());
+			insert(AK_INSTANCE TM_REF this->ac_prefix + "control." + std::string(user_.data(), user_.size()), access_all_string.data(), access_all_string.size());
+			insert(AK_INSTANCE TM_REF this->ac_prefix + "data." + std::string(user_.data(), user_.size()), access_all_string.data(), access_all_string.size());
 		}
 	}
 
 template <typename Handle, typename Allocator, typename Table, typename LockType>
 	void session<Handle, Allocator, Table, LockType>::set_permission_from_open(const string_view user_)
 	{
+		TM_ROOT()
 		/* Existing pool. If any access control, set user access from that control */
 		std::array<std::string, pool_type::persist_data_type::ix_count> a = { "control.", "data." };
 		if ( _map[pool_type::persist_data_type::ix_control].size() )
@@ -140,7 +147,7 @@ template <typename Handle, typename Allocator, typename Table, typename LockType
 					auto key = this->ac_prefix + a[i] + std::string(user_.data(), user_.size());
 					try
 					{
-						auto &v = _map[pool_type::persist_data_type::ix_control].at(key);
+						auto &v = _map[pool_type::persist_data_type::ix_control].at(TM_REF key);
 						auto value_len = std::get<0>(v).size();
 						if ( value_len == 1 )
 						{
@@ -287,11 +294,13 @@ template <typename Handle, typename Allocator, typename Table, typename LockType
 template <typename Handle, typename Allocator, typename Table, typename LockType>
 	auto session<Handle, Allocator, Table, LockType>::insert(
 		AK_ACTUAL
+		TM_ACTUAL
 		const std::string & key,
 		const void * value,
 		const std::size_t value_len
 	) -> std::pair<typename table_type::iterator, bool>
 	{
+		TM_SCOPE()
 		auto & map = locate_map(key, impl::access::write);
 		auto cvalue = static_cast<const char *>(value);
 
@@ -304,17 +313,19 @@ template <typename Handle, typename Allocator, typename Table, typename LockType
 		monitor_emplace<Allocator> m(this->allocator());
 #endif
 		++this->_writes;
+		TM_SCOPE(emplace)
 		return
 			map.emplace(
 				AK_REF
+				TM_REF
 				std::piecewise_construct
-				, std::forward_as_tuple(AK_REF key.begin(), key.end(), this->allocator())
+				, std::forward_as_tuple(AK_REF key.begin(), key.end(), lock_state::free, this->allocator())
 				, std::forward_as_tuple(
 /* we wish that std::tuple had piecewise_construct, but it does not. */
 #if 0
 					std::piecewise_construct,
 #endif
-					std::forward_as_tuple(AK_REF cvalue, cvalue + value_len, this->allocator())
+					std::forward_as_tuple(AK_REF cvalue, cvalue + value_len, lock_state::free, this->allocator())
 #if ENABLE_TIMESTAMPS
 					, impl::tsc_now()
 #endif
@@ -325,6 +336,7 @@ template <typename Handle, typename Allocator, typename Table, typename LockType
 template <typename Handle, typename Allocator, typename Table, typename LockType>
 	void session<Handle, Allocator, Table, LockType>::update_by_issue_41(
 		AK_ACTUAL
+		TM_ACTUAL
 		const std::string & key,
 		const void * value,
 		const std::size_t value_len,
@@ -332,8 +344,9 @@ template <typename Handle, typename Allocator, typename Table, typename LockType
 		const std::size_t old_value_len
 	)
 	{
+		TM_SCOPE()
 		auto & map = locate_map(key, impl::access::write);
-		definite_lock_type dl(AK_REF map, key, _heap);
+		definite_lock_type dl(AK_REF TM_REF map, key, _heap);
 
 		/* hstore issue 41: "a put should replace any existing k,v pairs that match.
 		 * If the new put is a different size, then the object should be reallocated.
@@ -343,8 +356,10 @@ template <typename Handle, typename Allocator, typename Table, typename LockType
 		{
 			_atomic_state.enter_replace(
 				AK_REF
+				TM_REF
 				this->allocator()
 				, &map
+				, lock_state::exclusive
 				, key
 				, static_cast<const char *>(value)
 				, value_len
@@ -354,23 +369,23 @@ template <typename Handle, typename Allocator, typename Table, typename LockType
 		}
 		else
 		{
-			std::vector<std::unique_ptr<component::IKVStore::Operation>> v;
-			v.emplace_back(std::make_unique<component::IKVStore::Operation_write>(0, value_len, value));
-			std::vector<component::IKVStore::Operation *> v2;
-			std::transform(v.begin(), v.end(), std::back_inserter(v2), [] (const auto &i) { return i.get(); });
-			this->atomic_update(AK_REF key, v2);
+			component::IKVStore::Operation_write op(0, value_len, value);
+			std::array<component::IKVStore::Operation *, 1> v2{&op};
+			this->atomic_update_inner(AK_REF TM_REF key, map, v2.begin(), v2.end(), lock_state::exclusive);
 		}
 	}
 
 template <typename Handle, typename Allocator, typename Table, typename LockType>
 	auto session<Handle, Allocator, Table, LockType>::get(
+		TM_ACTUAL
 		const std::string & key,
 		void* buffer,
 		std::size_t buffer_size
 	) const -> std::size_t
 	{
+		TM_SCOPE()
 		auto & map = locate_map(key, impl::access::read);
-		auto &v = map.at(key);
+		auto &v = map.at(TM_REF key);
 		auto value_len = std::get<0>(v).size();
 
 		if ( value_len <= buffer_size )
@@ -385,8 +400,9 @@ template <typename Handle, typename Allocator, typename Table, typename LockType
 		const std::string & key
 	) const -> std::tuple<void *, std::size_t>
 	{
+		TM_ROOT()
 		auto & map = locate_map(key, impl::access::read);
-		auto &v = map.at(key);
+		auto &v = map.at(TM_REF key);
 		auto value_len = std::get<0>(v).size();
 
 		auto value = ::scalable_malloc(value_len);
@@ -404,8 +420,9 @@ template <typename Handle, typename Allocator, typename Table, typename LockType
 		const std::string & key
 	) const -> std::size_t
 	{
+		TM_ROOT()
 		auto & map = locate_map(key, impl::access::read);
-		auto &v = map.at(key);
+		auto &v = map.at(TM_REF key);
 		return std::get<0>(v).size();
 	}
 
@@ -415,8 +432,9 @@ template <typename Handle, typename Allocator, typename Table, typename LockType
 		const std::string & key
 	) const -> std::size_t
 	{
+		TM_ROOT()
 		auto & map = locate_map(key, impl::access::read);
-		auto &v = map.at(key);
+		auto &v = map.at(TM_REF key);
 		// TO FIX
 		//                      return impl::tsc_to_epoch(std::get<1>(v));
 		return boost::numeric_cast<std::size_t>(impl::tsc_to_epoch(std::get<1>(v)).seconds());
@@ -435,23 +453,26 @@ template <typename Handle, typename Allocator, typename Table, typename LockType
 template <typename Handle, typename Allocator, typename Table, typename LockType>
 	void session<Handle, Allocator, Table, LockType>::resize_mapped(
 		AK_ACTUAL
+		TM_ACTUAL
 		const std::string & key
 		, std::size_t new_mapped_len
 		, std::size_t alignment
 	)
 	{
 		auto & map = locate_map(key, impl::access::write);
-		definite_lock_type dl(AK_REF map, key, _heap);
+		definite_lock_type dl(AK_REF TM_REF map, key, _heap);
 
-		auto &v = map.at(key);
+		auto &v = map.at(TM_REF key);
 		auto &d = std::get<0>(v);
 		/* Replace the data if the size changes or if the data should be realigned */
 		if ( d.size() != new_mapped_len || reinterpret_cast<std::size_t>(d.data()) % alignment != 0 )
 		{
 			this->_atomic_state.enter_replace(
 				AK_REF
+				TM_REF
 				this->allocator()
 				, &map
+				, lock_state::exclusive
 				, key
 				, d.data()
 				, std::min(d.size(), new_mapped_len)
@@ -464,6 +485,7 @@ template <typename Handle, typename Allocator, typename Table, typename LockType
 template <typename Handle, typename Allocator, typename Table, typename LockType>
 	auto session<Handle, Allocator, Table, LockType>::lock(
 		AK_ACTUAL
+		TM_ACTUAL
 		const std::string & key
 		, lock_type type
 		, void *const value
@@ -474,7 +496,7 @@ template <typename Handle, typename Allocator, typename Table, typename LockType
 #if USE_CC_HEAP == 4
 		monitor_emplace<Allocator> me(this->allocator());
 #endif
-		auto it = map.find(key);
+		auto it = map.find(TM_REF key);
 		if ( it == map.end() )
 		{
 			/* if the key is not found
@@ -490,14 +512,15 @@ template <typename Handle, typename Allocator, typename Table, typename LockType
 				auto r =
 					map.emplace(
 						AK_REF
+						TM_REF
 						std::piecewise_construct
-						, std::forward_as_tuple(AK_REF fixed_data_location, key.begin(), key.end(), this->allocator())
+						, std::forward_as_tuple(AK_REF fixed_data_location, key.begin(), key.end(), lock_state::free, this->allocator())
 						, std::forward_as_tuple(
 /* we wish that std::tuple had piecewise_construct, but it does not. */
 #if 0
 							std::piecewise_construct,
 #endif
-							std::forward_as_tuple(AK_REF fixed_data_location, value_len, this->allocator())
+							std::forward_as_tuple(AK_REF fixed_data_location, value_len, lock_state::free, this->allocator())
 #if ENABLE_TIMESTAMPS
 							, impl::tsc_now()
 #endif
@@ -583,34 +606,30 @@ template <typename Handle, typename Allocator, typename Table, typename LockType
 	}
 
 template <typename Handle, typename Allocator, typename Table, typename LockType>
-	auto session<Handle, Allocator, Table, LockType>::unlock(component::IKVStore::key_t key_, component::IKVStore::unlock_flags_t flags_) -> status_t
+	auto session<Handle, Allocator, Table, LockType>::unlock_indefinite(
+		TM_ACTUAL
+		component::IKVStore::key_t key_
+		, component::IKVStore::unlock_flags_t flags_
+	) -> status_t
 	{
+		TM_SCOPE()
 		if ( key_ )
 		{
-#if 0
-			PINF(PREFIX "attempt unlock ...", LOCATION);
-#endif
 			if ( auto lk = dynamic_cast<lock_impl *>(key_) )
 			{
 				auto & map = locate_map(lk->key(), impl::access::none);
-#if 0
-				PINF(PREFIX "attempt unlock %s", LOCATION, lk->key().c_str());
-#endif
 				try {
-					auto &m = *map.find(lk->key());
+					auto &m = *map.find(TM_REF lk->key());
 					auto &v = std::get<1>(m);
 					auto &d = std::get<0>(v);
 					if ( flags_ & component::IKVStore::UNLOCK_FLAGS_FLUSH )
 					{
 						d.flush_if_locked_exclusive(this->allocator());
 					}
-					d.unlock();
+					d.unlock_indefinite();
 				}
 				catch ( const std::out_of_range &e )
 				{
-#if 0
-					PINF(PREFIX "attempt unlock : key not found", LOCATION);
-#endif
 					return component::IKVStore::E_KEY_NOT_FOUND;
 				}
 				catch( ... ) {
@@ -647,11 +666,13 @@ template <typename Handle, typename Allocator, typename Table, typename LockType
 
 template <typename Handle, typename Allocator, typename Table, typename LockType>
 	auto session<Handle, Allocator, Table, LockType>::erase(
+		TM_ACTUAL
 		const std::string & key
 	) -> status_t
 	{
+		TM_SCOPE()
 		auto & map = locate_map(key, impl::access::write);
-		auto it = map.find(key);
+		auto it = map.find(TM_REF key);
 		if ( it != map.end() )
 		{
 			auto &v = *it;
@@ -760,12 +781,14 @@ template <typename Handle, typename Allocator, typename Table, typename LockType
 			const auto &m = mt.second;
 			const auto t = std::get<1>(m).raw();
 #if 0
-{
-std::ostringstream s;
-auto e = impl::tsc_to_epoch(std::get<1>(m));
-s << "(hstore::session::map) (t_begin " << t_begin.seconds() << " ref.timestamp " << e.seconds() << " t_end " << t_end.seconds() << ") (begin_tsc " << begin_tsc << " t " << t << " end_tsc " << end_tsc << ")";
-PLOG("%s", s.str().c_str());
-}
+			PLOG("%s: %s", __func__
+				, common::to_string(
+					"(t_begin ", t_begin.seconds()
+					, " ref.timestamp ", impl::tsc_to_epoch(std::get<1>(m)).seconds(), " t_end ", t_end.seconds()
+					, ") (begin_tsc ", begin_tsc, " t ", t, " end_tsc ", end_tsc, ")"
+				).c_str()
+			);
+
 #endif
 			if ( begin_tsc <= t && t <= end_tsc )
 			{
@@ -788,38 +811,48 @@ PLOG("%s", s.str().c_str());
 	}
 
 template <typename Handle, typename Allocator, typename Table, typename LockType>
-	void session<Handle, Allocator, Table, LockType>::atomic_update_inner(
-		AK_ACTUAL
-		const string_view key
-		, table_type &map
-		, const std::vector<component::IKVStore::Operation *> &op_vector
-	)
-	{
-		_atomic_state.enter_update(AK_REF this->allocator(), &map, key, op_vector.begin(), op_vector.end());
-	}
+	template <typename IT>
+		void session<Handle, Allocator, Table, LockType>::atomic_update_inner(
+			AK_ACTUAL
+			TM_ACTUAL
+			const string_view key_
+			, table_type &map_
+			, IT first_
+			, IT last_
+			, lock_state lock_
+		)
+		{
+			_atomic_state.enter_update(AK_REF TM_REF this->allocator(), &map_, lock_, key_, first_, last_);
+		}
 
 template <typename Handle, typename Allocator, typename Table, typename LockType>
-	void session<Handle, Allocator, Table, LockType>::atomic_update(
-		AK_ACTUAL
-		const std::string & key
-		, const std::vector<component::IKVStore::Operation *> &op_vector
-	)
-	{
-		auto & map = locate_map(key, impl::access::read|impl::access::write);
-		this->atomic_update_inner(AK_REF key, map, op_vector);
-	}
+	template <typename IT>
+		void session<Handle, Allocator, Table, LockType>::atomic_update(
+			AK_ACTUAL
+			TM_ACTUAL
+			const std::string& key
+			, IT first
+			, IT last
+		)
+		{
+			auto & map = locate_map(key, impl::access::read|impl::access::write);
+			this->atomic_update_inner(AK_REF TM_REF key, map, first, last, lock_state::free);
+		}
 
 template <typename Handle, typename Allocator, typename Table, typename LockType>
-	void session<Handle, Allocator, Table, LockType>::lock_and_atomic_update(
-		AK_ACTUAL
-		const std::string & key
-		, const std::vector<component::IKVStore::Operation *> &op_vector
-	)
-	{
-		auto & map = locate_map(key, impl::access::read|impl::access::write);
-		definite_lock_type m(AK_REF map, key, _heap.pool());
-		this->atomic_update_inner(AK_REF key, map, op_vector);
-	}
+	template <typename IT>
+		void session<Handle, Allocator, Table, LockType>::lock_and_atomic_update(
+			AK_ACTUAL
+			TM_ACTUAL
+			const std::string& key
+			, IT first
+			, IT last
+		)
+		{
+			auto & map = locate_map(key, impl::access::read|impl::access::write);
+			definite_lock_type m(AK_REF TM_REF map, key, _heap.pool());
+			this->atomic_update_inner(AK_REF TM_REF key, map, first, last, lock_state::exclusive);
+		}
 
 template <typename Handle, typename Allocator, typename Table, typename LockType>
 	void *session<Handle, Allocator, Table, LockType>::allocate_memory(
@@ -867,6 +900,7 @@ template <typename Handle, typename Allocator, typename Table, typename LockType
 template <typename Handle, typename Allocator, typename Table, typename LockType>
 	auto session<Handle, Allocator, Table, LockType>::swap_keys(
 		AK_ACTUAL
+		TM_ACTUAL
 		const std::string & key0
 		, const std::string & key1
 	) -> status_t
@@ -878,8 +912,8 @@ template <typename Handle, typename Allocator, typename Table, typename LockType
 		{
 			throw impl::key_not_found();
 		}
-		definite_lock_type d0(AK_REF map0, key0, _heap.pool());
-		definite_lock_type d1(AK_REF map1, key1, _heap.pool());
+		definite_lock_type d0(AK_REF TM_REF map0, key0, _heap.pool());
+		definite_lock_type d1(AK_REF TM_REF map1, key1, _heap.pool());
 
 		_atomic_state.enter_swap(
 			d0.mapped()
@@ -958,13 +992,17 @@ template <typename Handle, typename Allocator, typename Table, typename LockType
 			const auto t = std::get<1>(m);
 			ref.timestamp = impl::tsc_to_epoch(t);
 #if 0
-{
-std::ostringstream s;
-s << "(hstore::session::dref_iterator) (t_begin " << t_begin.seconds() << " ref.timestamp " << ref.timestamp.seconds() << " t_end " << t_end.seconds() << ") (begin_tsc " << begin_tsc << " t " << t << " end_tsc " << end_tsc << ")";
-PLOG("%s", s.str().c_str());
-}
+			PLOG("%s: %s" , __func__
+				, common::to_string(
+					"(t_begin ", t_begin.seconds()
+					, " ref.timestamp ", ref.timestamp.seconds(), " t_end ", t_end.seconds()
+					, ") (begin_tsc ", begin_tsc, " t ", t, " end_tsc ", end_tsc, ")"
+				).c_str()
+			);
 #endif
 			time_match = ( begin_tsc <= t && t <= end_tsc );
+#else
+			time_match = false;
 #endif
 		}
 

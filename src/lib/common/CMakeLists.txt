@@ -16,6 +16,10 @@ execute_process( COMMAND uname -m COMMAND tr -d '\n' OUTPUT_VARIABLE ARCHITECTUR
 
 include_directories(./include)
 include_directories(../GSL/include)
+include_directories(${CMAKE_INSTALL_PREFIX}/include) # daxctl
+
+link_directories(${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR})
+link_directories(${CMAKE_INSTALL_PREFIX}/lib)
 
 set(CMAKE_INCLUDE_CURRENT_DIR true)
 set(CMAKE_INSTALL_RPATH "/usr/lib64")
@@ -26,7 +30,7 @@ endif()
 
 add_definitions(-DCONFIG_DEBUG)
 
-file(GLOB SOURCES src/*.c*)
+file(GLOB SOURCES src/*.c* perf/*.cpp)
 
 add_library(common SHARED ${SOURCES})
 target_compile_options(common PUBLIC "-fPIC")
@@ -34,4 +38,5 @@ target_link_libraries(common gcov numa)
 
 install(TARGETS ${PROJECT_NAME} LIBRARY DESTINATION lib)
 install(DIRECTORY "include/common" DESTINATION include FILES_MATCHING PATTERN "*.h*")
+install(DIRECTORY "include/common/perf" DESTINATION include FILES_MATCHING PATTERN "*.h*")
 install(DIRECTORY "include/component" DESTINATION include FILES_MATCHING PATTERN "*.h*")

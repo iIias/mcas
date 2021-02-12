@@ -32,7 +32,7 @@
 
 #include "resource_unavailable.h"
 
-#ifdef PROFILE
+#ifdef HAS_PROFILER
 #include <gperftools/profiler.h>
 #else
 int ProfilerStart(const char *)
@@ -88,7 +88,7 @@ struct locked_key
   common::moveable_ptr<component::IKVStore> _store;
   IKVStore::pool_t                          _pool;
   component::IKVStore::key_t                _lock_handle;
-  
+
   locked_key(component::IKVStore *store_, IKVStore::pool_t pool_, component::IKVStore::key_t lh_)
     : _store(store_)
     , _pool(pool_)
@@ -163,7 +163,7 @@ Shard::Shard(const Config_file &config_file,
     _ado_path(config_file.get_ado_path() ? *config_file.get_ado_path() : ""),
     _ado_plugins(config_file.get_shard_ado_plugins(shard_index)),
     _ado_params(config_file.get_shard_ado_params(shard_index)),
-    _ado_signal_mask(config_file.get_shard_ado_signals(shard_index)),        
+    _ado_signal_mask(config_file.get_shard_ado_signals(shard_index)),
     _security(config_file.security_get_cert_path(),
               config_file.security_get_key_path(),
               config_file.get_shard_optional(config::security_mode, shard_index),
@@ -330,6 +330,7 @@ void Shard::service_cluster_signals()
   }
 }
 
+
 //#define DEBUG_LIVENESS // use this to show how live the shard loop threads are
 #define LIVENESS_DURATION 10000
 #define LIVENESS_SHARDS 18
@@ -359,7 +360,6 @@ void Shard::main_loop(common::profiler &pr_)
   uint64_t tick alignas(8) = 0;
 
   for (; _thread_exit == false; ++idle, ++tick) {
-
 #ifdef DEBUG_LIVENESS
     assert(_core < LIVENESS_SHARDS);
     /* show report of liveness */
@@ -409,8 +409,10 @@ void Shard::main_loop(common::profiler &pr_)
     }
 
     /* periodic cluster signal handling */
-    if (tick % CHECK_CLUSTER_SIGNAL_INTERVAL == 0) {
-      service_cluster_signals();
+    {
+      if (tick % CHECK_CLUSTER_SIGNAL_INTERVAL == 0) {
+        service_cluster_signals();
+      }
     }
 
     /* output memory usage for debug level > 0 */
@@ -485,22 +487,26 @@ void Shard::main_loop(common::profiler &pr_)
         } // TICK_RESPONSE_CLOSE
 
         /* process ALL deferred actions */
-#ifndef NDEBUG
         int get_pending_iter = 0;
-#endif
         while (handler->get_pending_action(action)) {
           idle = 0;
-#ifndef NDEBUG
+          (void)get_pending_iter;
           assert(get_pending_iter++ < 1000);
-#endif
+
           switch (action.op) {
-          case Connection_handler::ACTION_RELEASE_VALUE_LOCK_EXCLUSIVE:
-            CPLOG(2, "releasing value lock (%p)", action.parm);
+#if 0
+          case Connection_handler::action_type::ACTION_RELEASE_VALUE_LOCK_EXCLUSIVE:
+            CPLOG(2, "releasing esxclusive value lock (%p)", action.parm);
             release_locked_value_exclusive(action.parm);
             release_pending_rename(action.parm);
             break;
+#endif
+          case Connection_handler::action_type::ACTION_RELEASE_VALUE_LOCK_SHARED:
+            CPLOG(2, "releasing shared value lock (%p)", action.parm);
+            release_locked_value_shared(action.parm);
+            break;
           default:
-            throw Logic_exception("unknown action type");
+            throw Logic_exception("unexpected action type %d", int(action.op));
           }
         }
 
@@ -516,6 +522,7 @@ void Shard::main_loop(common::profiler &pr_)
 
             idle = 0;
             assert(p_msg);
+/* "split" accepts responsibility for the *preceding* code. Not exactly intuitive. */
             switch (p_msg->type_id()) {
             case MSG_TYPE::IO_REQUEST:
               process_message_IO_request(handler, static_cast<const protocol::Message_IO_request *>(p_msg));
@@ -549,7 +556,8 @@ void Shard::main_loop(common::profiler &pr_)
 
       /* handle messages send back from ADO */
       try {
-        process_messages_from_ado();
+        if(ado_enabled())
+          process_messages_from_ado();
       }
       catch (const resource_unavailable &e) {
         PLOG("short of buffers in 'ADO' processing: %s", e.what());
@@ -559,31 +567,37 @@ void Shard::main_loop(common::profiler &pr_)
         throw;
       }
 
-      /* handle tasks */
-      process_tasks(idle);
+      {
+        /* handle tasks */
+        process_tasks(idle);
+      }
 
       /* handle pending close sessions */
       assert(pending_close.size() < 1000);
 
       /* process closures */
-      for (auto &h : pending_close) {
-        _handlers.erase(std::remove(_handlers.begin(), _handlers.end(), h), _handlers.end());
-        CPLOG(1, "Deleting handler (%p)", common::p_fmt(h));
+      {
+        for (auto &h : pending_close) {
+          _handlers.erase(std::remove(_handlers.begin(), _handlers.end(), h), _handlers.end());
+          CPLOG(1, "Deleting handler (%p)", common::p_fmt(h));
 
-        assert(h);
-        delete h;
+          assert(h);
+          delete h;
 
-        CPLOG(1, "# remaining handlers (%lu)", _handlers.size());
+          CPLOG(1, "# remaining handlers (%lu)", _handlers.size());
 
-        if (_handlers.empty() && _forced_exit) {
-          CPLOG(1, "Shard: forcing exit..");
-          _thread_exit = true;
+          if (_handlers.empty() && _forced_exit) {
+            CPLOG(1, "Shard: forcing exit..");
+            _thread_exit = true;
+          }
         }
       }
     }
   }
 
-  close_all_ado();
+  {
+    close_all_ado();
+  }
 
   PLOG("Shard (%p) exited", common::p_fmt(this));
 }
@@ -718,11 +732,11 @@ void Shard::process_message_pool_request(Connection_handler *const handler, cons
 
         if (pool != IKVStore::POOL_ERROR && ado_enabled()) { /* if ADO is enabled start ADO process */
           IADO_proxy *ado  = nullptr;
-          
+
           pool_desc_t desc = {pool_name, msg->pool_size(), msg->flags(),
                               msg->expected_object_count(), true,
                               reinterpret_cast<void*>(msg->base_addr())};
-          
+
           conditional_bootstrap_ado_process(auth_kvstore, handler, pool, ado, desc);
         }
       } break;
@@ -1012,9 +1026,9 @@ void Shard::release_pending_rename(const void *target)
 
 /* like respond2, but omits the final post */
 protocol::Message_IO_response * Shard::prepare_response(const Connection_handler *handler_,
-                                                buffer_t *iob_,
-                                                uint64_t request_id,
-                                                int status_)
+                                                        buffer_t *iob_,
+                                                        uint64_t request_id,
+                                                        int status_)
 {
   auto response =
     new (iob_->base()) protocol::Message_IO_response(iob_->length(), handler_->auth_id(), request_id);
@@ -1025,10 +1039,10 @@ protocol::Message_IO_response * Shard::prepare_response(const Connection_handler
 }
 
 void Shard::respond(Connection_handler *handler_,
-                     buffer_t *iob_,
-                     const protocol::Message_IO_request *msg_,
-                     int status_,
-                     const char * func_)
+                    buffer_t *iob_,
+                    const protocol::Message_IO_request *msg_,
+                    int status_,
+                    const char * func_)
 {
   auto response = prepare_response(handler_, iob_, msg_->request_id(), status_);
   handler_->post_response(iob_, response, func_);  // issue IO request response
@@ -1134,7 +1148,7 @@ void Shard::io_response_get_release(Connection_handler *handler,
                IKVStore::lock_type_t::STORE_LOCK_READ);
     /* note: client will be signalled on return of this ADO call,
        therefore if the ADO operation stalls, the client will be stalled too.
-     */
+    */
   }
   else {
     respond(handler, iob, msg, status, __func__);
@@ -1288,7 +1302,7 @@ void Shard::io_response_put_locate(Connection_handler *const handler,
         /* register clean and rename tasks for value */
         add_locked_value_exclusive(pool_id, lk.release(), target, target_len, std::move(mr));
         add_pending_rename(pool_id, target, k, actual_key);
-        
+
         if (ado_signal_post_put())
           add_target_keyname(target, actual_key);
       }
@@ -1296,7 +1310,7 @@ void Shard::io_response_put_locate(Connection_handler *const handler,
         PLOG("%s failed: %s", __func__, e.what());
         status = E_FAIL;
       }
-      
+
       auto response  = prepare_response(handler, iob, msg->request_id(), status);
       response->addr = reinterpret_cast<std::uint64_t>(target);
       response->key  = key;
@@ -1319,7 +1333,7 @@ void Shard::io_response_put_release(Connection_handler *handler, const protocol:
         target, msg->request_id());
 
   int status = S_OK;
-  
+
   try {
     release_locked_value_exclusive(target);
     release_pending_rename(target);
@@ -1340,7 +1354,7 @@ void Shard::io_response_put_release(Connection_handler *handler, const protocol:
                IKVStore::lock_type_t::STORE_LOCK_READ);
     /* note: client will be signalled on return of this ADO call,
        therefore if the ADO operation stalls, the client will be stalled too.
-     */
+    */
   }
   else {
     respond(handler, iob, msg, status, __func__);
@@ -1468,7 +1482,7 @@ void Shard::io_response_get(Connection_handler *handler, const protocol::Message
        * about the value of TWO_STAGE_THRESHOLD?
        */
       bool is_direct = msg->is_direct();
-      
+
       /* optimize based on size */
       if (!is_direct && (value_out.iov_len < TWO_STAGE_THRESHOLD)) {
 
@@ -1496,7 +1510,7 @@ void Shard::io_response_get(Connection_handler *handler, const protocol::Message
           iob->set_length(response->msg_len());
 
           auth_kvstore->unlock(msg->pool_id(), lk.release(), IKVStore::UNLOCK_FLAGS_FLUSH);
-          
+
           handler->post_response(iob, response, __func__);
         }
 
@@ -1506,7 +1520,7 @@ void Shard::io_response_get(Connection_handler *handler, const protocol::Message
         CPLOG(2, "Shard: get using two stage get response (value_out_len=%lu)", value_out.iov_len);
 
         size_t client_side_value_len = msg->get_value_len();
-        
+
         /* check if client has allocated sufficient space */
         if (client_side_value_len < value_out.iov_len) {
           auth_kvstore->unlock(msg->pool_id(), lk.release()); /* no flush needed ? */
@@ -1517,19 +1531,19 @@ void Shard::io_response_get(Connection_handler *handler, const protocol::Message
         else {
           try {
             memory_registered<Connection_base> mr(debug_level(), handler, value_out.iov_base, value_out.iov_len, 0, 0);
-            
+
             auto desc = mr.desc();
             auto response = prepare_response(handler, iob, msg->request_id(), S_OK);
-            
+
             response->set_data_len_without_data(value_out.iov_len);
             assert(response->get_status() == S_OK);
-            
+
             /* register clean up task for value */
             add_locked_value_shared(msg->pool_id(), lk.release(), value_out.iov_base, value_out.iov_len, std::move(mr));
-            
+
             if (!is_direct && (value_out.iov_len <= (handler->IO_buffer_size() - response->base_message_size()))) {
               CPLOG(2, "posting response header and value together");
-              
+
               /* post both buffers together in same response packet */
               if(ado_signal_post_get()) {
 
@@ -1573,7 +1587,7 @@ void Shard::io_response_erase(Connection_handler *handler, const protocol::Messa
   std::string key = msg->skey();
 
   status_t status;
-  
+
   if (ado_signal_post_erase()) {
 
     /* actually it may not have been erased by the time the
@@ -1582,12 +1596,12 @@ void Shard::io_response_erase(Connection_handler *handler, const protocol::Messa
        if we want a pre-erase with guarantees we'll have to
        support a "deferred" erase (similar to unlock).
     */
-    signal_ado_async_nolock("post-erase", 
+    signal_ado_async_nolock("post-erase",
                             handler,
                             msg->request_id(),
                             msg->pool_id(),
                             key);
-  }  
+  }
 
   status = handler->auth_kvstore(debug_level(), _i_kvstore.get())->erase(msg->pool_id(), key);
 
@@ -1621,7 +1635,6 @@ void Shard::process_message_IO_request(Connection_handler *handler, const protoc
     assert(iob);
 
     ++_stats.op_request_count;
-
     switch (msg->op()) {
     case protocol::OP_PUT_LOCATE:
       io_response_put_locate(handler, msg, iob);
@@ -1668,7 +1681,7 @@ void Shard::process_message_IO_request(Connection_handler *handler, const protoc
 
 namespace
 {
-  using byte_span = common::byte_span;
+using byte_span = common::byte_span;
 auto region_breaks(const std::vector<byte_span> regions_) -> std::vector<byte_span>
 {
   std::vector<byte_span> region_breaks;
@@ -1849,7 +1862,7 @@ void Shard::io_response_release_with_flush(Connection_handler *const handler, co
   nupm::region_descriptor regions;
   const auto auth_kvstore = handler->auth_kvstore(debug_level(), _i_kvstore.get());
   auto status = auth_kvstore->get_pool_regions(msg->pool_id(), regions);
-  
+
   if (status == S_OK) {
     const auto rb = region_breaks(regions.address_map());
 
@@ -1877,7 +1890,7 @@ void Shard::io_response_release_with_flush(Connection_handler *const handler, co
 void Shard::process_info_request(Connection_handler *handler, const protocol::Message_INFO_request *msg, common::profiler &pr_)
 {
   handler->msg_recv_log(msg, __func__);
-  
+
   if (msg->type() == protocol::INFO_TYPE_FIND_KEY) {
     CPLOG(1, "Shard: INFO request INFO_TYPE_FIND_KEY (%s)", msg->c_str());
 
@@ -2056,10 +2069,10 @@ status_t Shard::process_configure(Connection_handler *handler, const protocol::M
 
   std::string command(msg->cmd());
 
-  /* dynamic loading of secondary index.  loading this 
+  /* dynamic loading of secondary index.  loading this
      way (as oppposed to via shard configuration) will
      cause a rebuild by iterating the key space in the main
-     storage engine 
+     storage engine
      e.g. AddIndex::rbtree, AddIndex::customtree
   */
   if (command.substr(0, 10) == "AddIndex::") {
@@ -2072,7 +2085,7 @@ status_t Shard::process_configure(Connection_handler *handler, const protocol::M
     std::string dll_string = "libcomponent-index-";
     dll_string += index_str;
     dll_string += ".so";
-    
+
     if (_index_map == nullptr)
       _index_map.reset(new index_map_t());
 
@@ -2082,7 +2095,7 @@ status_t Shard::process_configure(Connection_handler *handler, const protocol::M
       PWRN("unable to load %s as secondary index", dll_string.c_str());
       return E_FAIL;
     }
-    
+
     auto factory = make_itf_ref(static_cast<IKVIndex_factory *>(comp->query_interface(IKVIndex_factory::iid())));
     assert(factory);
 
@@ -2108,7 +2121,7 @@ status_t Shard::process_configure(Connection_handler *handler, const protocol::M
                                        p->second->insert(key);
                                        return 0;
                                      })) != S_OK) {
-        
+
         /* alternative when map_keys method optimization is not supported on main engine */
         hr = auth_kvstore->map(msg->pool_id(),
                              [p](const void *key,

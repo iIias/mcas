@@ -26,11 +26,12 @@ namespace impl
 		struct bucket_control
 			: public bucket_control_unlocked<Bucket>
 		{
-			std::unique_ptr<bucket_mutexes<Mutex>[]> _bucket_mutexes;
-		public:
 			using base = bucket_control_unlocked<Bucket>;
-			using typename base::bucket_aligned_t;
 			using typename base::six_t;
+			using typename base::bucket_aligned_t;
+
+			std::unique_ptr<bucket_mutexes<Mutex>[]> _bucket_mutexes;
+
 			explicit bucket_control(
 				six_t index_
 				, bucket_aligned_t *buckets_
@@ -39,14 +40,24 @@ namespace impl
 				, _bucket_mutexes(nullptr)
 			{
 			}
+
 			explicit bucket_control()
 				: bucket_control(0U, nullptr)
 			{
 			}
-			bucket_control(bucket_control &&) noexcept = default;
-			~bucket_control()
+
+			void extend(
+				bucket_aligned_t *more_
+				, bucket_control_unlocked<Bucket> *prev_
+				, bucket_control_unlocked<Bucket> *next_
+				, six_t segment_count_
+			)
 			{
+				base::extend(more_, prev_, next_, segment_count_);
+				_bucket_mutexes.reset(new bucket_mutexes<Mutex>[base::segment_size()]);
 			}
+
+			bucket_control(bucket_control &&) noexcept = default;
 		};
 }
 

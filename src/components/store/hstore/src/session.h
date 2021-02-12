@@ -20,9 +20,9 @@
 
 #include "access.h"
 #include "alloc_key.h" /* AK_FORMAL */
+#include "lock_result.h"
 #include "persist_atomic_controller.h"
 #include "construction_mode.h"
-#include "lock_result.h"
 
 #include <common/string_view.h>
 #include <common/time.h> /* tsc_time_t, epoch_time_t */
@@ -130,6 +130,7 @@ template <typename Handle, typename Allocator, typename Table, typename LockType
 
 		auto insert(
 			AK_FORMAL
+			TM_FORMAL
 			const std::string & key,
 			const void * value,
 			const std::size_t value_len
@@ -137,6 +138,7 @@ template <typename Handle, typename Allocator, typename Table, typename LockType
 
 		void update_by_issue_41(
 			AK_FORMAL
+			TM_FORMAL
 			const std::string & key,
 			const void * value,
 			const std::size_t value_len,
@@ -145,6 +147,7 @@ template <typename Handle, typename Allocator, typename Table, typename LockType
 		);
 
 		auto get(
+			TM_FORMAL
 			const std::string & key,
 			void* buffer,
 			std::size_t buffer_size
@@ -171,6 +174,7 @@ template <typename Handle, typename Allocator, typename Table, typename LockType
 
 		void resize_mapped(
 			AK_FORMAL
+			TM_FORMAL
 			const std::string & key
 			, std::size_t new_mapped_len
 			, std::size_t alignment
@@ -178,19 +182,25 @@ template <typename Handle, typename Allocator, typename Table, typename LockType
 
 		auto lock(
 			AK_FORMAL
+			TM_FORMAL
 			const std::string & key
 			, lock_type type
 			, void *const value
 			, const std::size_t value_len
 		) -> lock_result;
 
-		auto unlock(component::IKVStore::key_t key_, component::IKVStore::unlock_flags_t flags_) -> status_t;
+		auto unlock_indefinite(
+			TM_ACTUAL
+			component::IKVStore::key_t key
+			, component::IKVStore::unlock_flags_t flags
+		) -> status_t;
 
 		bool get_auto_resize() const;
 
 		void set_auto_resize(bool auto_resize);
 
 		auto erase(
+			TM_FORMAL
 			const std::string & key
 		) -> status_t;
 
@@ -220,23 +230,33 @@ template <typename Handle, typename Allocator, typename Table, typename LockType
 			, common::epoch_time_t t_end
 		) -> status_t;
 
-		void atomic_update_inner(
-			AK_FORMAL
-			const string_view key
-			, table_type &map
-			, const std::vector<component::IKVStore::Operation *> &op_vector
+		template <typename IT> /* *IT shall be a const component::IKVStore::Operation *const */
+			void atomic_update_inner(
+				AK_FORMAL
+				TM_FORMAL
+				const string_view key
+				, table_type &map
+				, IT first
+				, IT last
+				, lock_state lock
 		);
 
-		void atomic_update(
-			AK_FORMAL
-			const std::string & key
-			, const std::vector<component::IKVStore::Operation *> &op_vector
-		);
+		template <typename IT> /* *IT shall be a const component::IKVStore::Operation * */
+			void atomic_update(
+				AK_FORMAL
+				TM_FORMAL
+				const std::string & key
+				, IT first
+				, IT last
+			);
 
-		void lock_and_atomic_update(
-			AK_FORMAL
-			const std::string & key
-			, const std::vector<component::IKVStore::Operation *> &op_vector
+		template <typename IT> /* *IT shall be a const component::IKVStore::Operation * */
+			void lock_and_atomic_update(
+				AK_FORMAL
+				TM_FORMAL
+				const std::string & key
+				, IT first
+				, IT last
 		);
 
 		void *allocate_memory(
@@ -259,6 +279,7 @@ template <typename Handle, typename Allocator, typename Table, typename LockType
 
 		auto swap_keys(
 			AK_FORMAL
+			TM_FORMAL
 			const std::string & key0
 			, const std::string & key1
 		) -> status_t;

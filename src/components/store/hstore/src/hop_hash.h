@@ -20,6 +20,8 @@
 #include "alloc_key.h" /* AK_ACTUAL */
 #include "construction_mode.h"
 
+#include <common/perf/tm_fwd.h>
+
 #include <cstddef> /* size_t */
 #include <functional> /* equal_to */
 #include <new> /* allocator */

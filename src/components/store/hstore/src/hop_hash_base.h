@@ -219,6 +219,7 @@ namespace impl
 
 			template <typename Lock, typename K>
 				auto locate_key(
+					TM_FORMAL
 					Lock &bi
 					, const K &k
 				) const -> std::tuple<bucket_t *, segment_and_bucket_t>;
@@ -283,6 +284,8 @@ namespace impl
 				auto bucket(const K &) const -> size_type;
 			auto bucket_size(const size_type n) const -> size_type;
 
+			auto owned_by_owner_mask_new(const segment_and_bucket_t &a) const -> owner::value_type;
+			auto owned_by_owner_mask_old(const segment_and_bucket_t &a) const -> owner::value_type;
 			auto owned_by_owner_mask(const segment_and_bucket_t &a) const -> owner::value_type;
 			bool is_free_by_owner(const segment_and_bucket_t &a) const;
 			bool is_Free(const segment_and_bucket_t &a);
@@ -293,11 +296,17 @@ namespace impl
 			 */
 			auto distance_wrapped(bix_t first, bix_t last) -> unsigned;
 
+			/* begin an owner mask (all owners prededing sb) */
+			auto owned_by_owner_pre_mask(const segment_and_bucket_t &sb) const -> owner::value_type;
+			/* finish the owner mask (or in ownership by sb) */
+			auto finish_owner_mask(owner::value_type owner_mask, segment_and_bucket_t sb) const -> owner::value_type;
+
 			unsigned _locate_key_call;
 			unsigned _locate_key_owned;
 			unsigned _locate_key_unowned;
 			unsigned _locate_key_match;
 			unsigned _locate_key_mismatch;
+			int _consistency_check;
 
 		public:
 			explicit hop_hash_base(
@@ -312,6 +321,7 @@ namespace impl
 			virtual ~hop_hash_base();
 		public:
 			hop_hash_base &operator=(const hop_hash_base &) = delete;
+			void check_consistency() const;
 			allocator_type get_allocator() const noexcept
 			{
 				return static_cast<const hop_hash_allocator<Allocator> &>(*this);
@@ -320,27 +330,49 @@ namespace impl
 			template <typename ... Args>
 				auto emplace(
 					AK_FORMAL
+					TM_FORMAL
 					Args && ... args
 				) -> std::pair<iterator, bool>;
-			auto insert(const value_type &value) -> std::pair<iterator, bool>;
+			auto insert(
+					TM_FORMAL
+					const value_type &value
+			) -> std::pair<iterator, bool>;
 
 			template <typename K>
-				auto erase(const K &key) -> size_type;
+				auto erase(
+					TM_FORMAL
+					const K &key
+				) -> size_type;
 
 			auto erase(iterator it) -> iterator;
 
 			template <typename K>
-				auto find(const K &key) -> iterator;
+				auto find(
+					TM_FORMAL
+					const K &key
+				) -> iterator;
 			template <typename K>
-				auto find(const K &key) const -> const_iterator;
+				auto find(
+					TM_FORMAL
+					const K &key
+				) const -> const_iterator;
 
 			template <typename K>
-				auto at(const K &key) -> mapped_type &;
+				auto at(
+					TM_FORMAL
+					const K &key
+				) -> mapped_type &;
 			template <typename K>
-				auto at(const K &key) const -> const mapped_type &;
+				auto at(
+					TM_FORMAL
+					const K &key
+				) const -> const mapped_type &;
 
 			template <typename K>
-				auto count(const K &k) const -> size_type;
+				auto count(
+					TM_FORMAL
+					const K &k
+				) const -> size_type;
 			auto begin() -> iterator
 			{
 				return iterator(make_segment_and_bucket_at_begin(), 0U);

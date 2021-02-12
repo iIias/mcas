@@ -30,16 +30,10 @@ public:
 		: component::IKVStore::Opaque_key{}
 		, _s(s_.begin(), s_.end())
 	{
-#if 0
-		PINF(PREFIX "%s:%d lock: %s", LOCATION, _s.c_str());
-#endif
 	}
 	const std::string &key() const { return _s; }
 	~lock_impl()
 	{
-#if 0
-		PINF(PREFIX "%s:%d unlock: %s", LOCATION, _s.c_str());
-#endif
 	}
 };
 

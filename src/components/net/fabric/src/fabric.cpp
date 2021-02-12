@@ -484,14 +484,18 @@ void Fabric::bind(::fid_pep &ep_)
 void Fabric::register_pep(::fid_t ep_, event_consumer &ec_)
 {
   std::lock_guard<std::mutex> g{_m_eq_dispatch_pep};
-  auto p = _eq_dispatch_pep.insert(eq_dispatch_t::value_type(ep_, &ec_));
+  auto p =
+    _eq_dispatch_pep.insert(eq_dispatch_t::value_type(ep_, &ec_));
+  (void)p;
   assert(p.second);
 }
 
 void Fabric::register_aep(::fid_t ep_, event_consumer &ec_)
 {
   std::lock_guard<std::mutex> g{_m_eq_dispatch_aep};
-  auto p = _eq_dispatch_aep.insert(eq_dispatch_t::value_type(ep_, &ec_));
+  auto p =
+    _eq_dispatch_aep.insert(eq_dispatch_t::value_type(ep_, &ec_));
+  (void)p;
   assert(p.second);
 }
 

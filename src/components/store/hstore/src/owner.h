@@ -201,9 +201,12 @@ namespace impl
 		: _pos(owner::pos_undefined)
 	{}
 
-	inline void pos_trace<true>::set_pos(std::size_t pos_, unsigned p_)
+	inline void pos_trace<true>::set_pos(std::size_t pos_,
+                                       unsigned p_
+                                       )
 	{
 		assert(_pos == owner::pos_undefined || _pos == pos_);
+		(void)p_;
 		assert(p_ < owner::size);
 		_pos = pos_;
 	}
