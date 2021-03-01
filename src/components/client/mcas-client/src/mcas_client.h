@@ -35,6 +35,7 @@
 
 #include <boost/optional.hpp>
 
+#include <array>
 #include <cstdint> /* uint16_t */
 #include <memory>  /* unique_ptr */
 #include <string>
@@ -143,8 +144,26 @@ class MCAS_client
   virtual status_t put_direct(const pool_t                 pool,
                               const std::string &          key,
                               gsl::span<const common::const_byte_span> values,
-                              gsl::span<IMCAS::memory_handle_t> handles = gsl::span<IMCAS::memory_handle_t>(),
-                              const unsigned int           flags  = IMCAS::FLAGS_NONE) override;
+                              gsl::span<const IMCAS::memory_handle_t> handles,
+                              const unsigned int           flags) override;
+
+  status_t put_direct(const pool_t       pool,
+                              const std::string& key,
+                              const void*        value,
+                              const size_t       value_len,
+                              IKVStore::memory_handle_t handle = HANDLE_NONE,
+                              flags_t            flags  = IKVStore::FLAGS_NONE)
+  {
+    return
+      put_direct(
+        pool
+        , key
+        , std::array<common::const_byte_span, 1>{common::make_const_byte_span(value,value_len)}
+        , std::array<IMCAS::memory_handle_t, 1>{handle}
+        , flags
+      );
+  }
+
 
   virtual status_t async_put(const IKVStore::pool_t pool,
                              const std::string &    key,
@@ -157,8 +176,8 @@ class MCAS_client
                                     const std::string&              key,
                                     gsl::span<const common::const_byte_span> values,
                                     async_handle_t &                out_handle,
-                                    gsl::span<IMCAS::memory_handle_t> handles = gsl::span<IMCAS::memory_handle_t>(),
-                                    const unsigned int              flags  = IMCAS::FLAGS_NONE) override;
+                                    gsl::span<const IMCAS::memory_handle_t> handles,
+                                    const unsigned int              flags) override;
 
   virtual status_t check_async_completion(async_handle_t &handle) override;
 

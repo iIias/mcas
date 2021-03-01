@@ -135,7 +135,7 @@ public:
 struct mr_many
 {
 	std::vector<memory_registered> _vec;
-	mr_many(Registrar_memory_direct *rmd_, gsl::span<const mcas::range<char *>> range_, gsl::span<component::IKVStore::memory_handle_t> handles_)
+	mr_many(Registrar_memory_direct *rmd_, gsl::span<const mcas::range<char *>> range_, gsl::span<const component::IKVStore::memory_handle_t> handles_)
 		: _vec()
 	{
 		_vec.reserve(std::size(range_));
@@ -329,7 +329,8 @@ namespace
 	 */
 	std::vector<mcas::range<char *>> make_rounded_range_vector(gsl::span<const common::const_byte_span> values_, std::size_t round_)
 	{
-		std::vector<mcas::range<char *>> v(values_.size());
+		std::vector<mcas::range<char *>> v;
+		v.reserve(values_.size());
 		for ( std::size_t i = 0; i != values_.size(); ++i )
 		{
 			v.emplace_back(
@@ -368,7 +369,7 @@ public:
                               component::IMCAS::pool_t pool_,
                               std::uint64_t            auth_id_,
                               gsl::span<const common::const_byte_span> values_,
-    gsl::span<component::IKVStore::memory_handle_t> handles_
+      gsl::span<const component::IKVStore::memory_handle_t> handles_
     )
   : async_buffer_set_t(debug_level_, std::move(iobs_), std::move(iobr_)),
     mr_many(rmd_,
@@ -1322,7 +1323,7 @@ IMCAS::async_handle_t Connection_handler::put_locate_async(const pool_t         
                                                            const size_t                        key_len,
                                                            const gsl::span<const common::const_byte_span> values,
                                                            component::Registrar_memory_direct *rmd_,
-                                                           gsl::span<component::IKVStore::memory_handle_t> mem_handles_,
+                                                           gsl::span<const component::IKVStore::memory_handle_t> mem_handles_,
                                                            const unsigned                      flags)
 {
   auto iobr = make_iob_ptr_recv();
@@ -1476,7 +1477,7 @@ status_t Connection_handler::put_direct(pool_t                               poo
                       size_t                               key_len_,
                       gsl::span<const common::const_byte_span> values_,
                       component::Registrar_memory_direct * rmd_,
-                      gsl::span<component::IMCAS::memory_handle_t> handles_,
+                      gsl::span<const component::IMCAS::memory_handle_t> handles_,
                       unsigned int                         flags_)
 {
   component::IMCAS::async_handle_t async_handle = component::IMCAS::ASYNC_HANDLE_INIT;
@@ -1546,7 +1547,7 @@ status_t Connection_handler::async_put_direct(const IMCAS::pool_t               
                                               const gsl::span<const common::const_byte_span>   values_,
                                               component::IMCAS::async_handle_t &         out_async_handle_,
                                               component::Registrar_memory_direct *       rmd_,
-                                              const gsl::span<component::IKVStore::memory_handle_t> mem_handles_,
+                                              const gsl::span<const component::IKVStore::memory_handle_t> mem_handles_,
                                               const unsigned int                         flags_)
 {
   API_LOCK();

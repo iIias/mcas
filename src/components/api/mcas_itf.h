@@ -272,7 +272,7 @@ public:
   virtual status_t put_direct(const IMCAS::pool_t   pool,
                               const std::string&    key,
                               gsl::span<const common::const_byte_span> values,
-                              gsl::span<memory_handle_t> handles = gsl::span<memory_handle_t>(),
+                              gsl::span<const memory_handle_t> handles = gsl::span<const memory_handle_t>(),
                               const unsigned int    flags  = IMCAS::FLAGS_NONE) = 0;
 
   virtual status_t put_direct(const IMCAS::pool_t   pool,
@@ -282,13 +282,11 @@ public:
                               const memory_handle_t handle = IMCAS::MEMORY_HANDLE_NONE,
                               const unsigned int    flags  = IMCAS::FLAGS_NONE)
 	{
-		std::array<const common::const_byte_span,1> values {common::make_const_byte_span(value, value_len)};
-		std::array<memory_handle_t,1> handles { handle };
 		return put_direct(
 			pool
 			, key
-			, values
-			, handles
+			, std::array<const common::const_byte_span,1>{common::make_const_byte_span(value, value_len)}
+			, std::array<memory_handle_t,1>{handle}
 			, flags
 		);
 	}
@@ -345,9 +343,14 @@ public:
                                     const memory_handle_t handle = IMCAS::MEMORY_HANDLE_NONE,
                                     const unsigned int    flags  = IMCAS::FLAGS_NONE)
   {
-    std::array<common::const_byte_span,1> values { common::make_const_byte_span(value, value_len) };
-    std::array<memory_handle_t,1> handles { handle };
-    return async_put_direct(pool, key, values, out_handle, handles, flags);
+    return
+      async_put_direct(
+        pool
+        , key
+        , std::array<common::const_byte_span,1>{common::make_const_byte_span(value, value_len)}
+        , out_handle, std::array<memory_handle_t,1>{handle}
+        , flags
+      );
   }
 
   /**
@@ -367,7 +370,7 @@ public:
                                     const std::string&    key,
                                     gsl::span<const common::const_byte_span> value,
                                     async_handle_t&       out_handle,
-                                    gsl::span<memory_handle_t> handles = gsl::span<memory_handle_t>(),
+                                    gsl::span<const memory_handle_t> handles = gsl::span<const memory_handle_t>(),
                                     const unsigned int    flags  = IMCAS::FLAGS_NONE) = 0;
 
   /**
