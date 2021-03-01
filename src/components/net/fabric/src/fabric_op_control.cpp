@@ -118,8 +118,7 @@ Fabric_op_control::~Fabric_op_control()
  * @return Work (context) identifier
  */
 void Fabric_op_control::post_send(
-  const ::iovec *first_
-  , const ::iovec *last_
+  gsl::span<const ::iovec> buffers_
   , void **desc_
   , void *context_
 )
@@ -127,9 +126,9 @@ void Fabric_op_control::post_send(
   CHECK_FI_EQ(
     ::fi_sendv(
       &ep()
-      , first_
+      , &*buffers_.begin()
       , desc_
-      , std::size_t(last_ - first_)
+      , buffers_.size()
       , ::fi_addr_t{}
       , context_
     )
@@ -139,13 +138,12 @@ void Fabric_op_control::post_send(
 }
 
 void Fabric_op_control::post_send(
-  const ::iovec *first_
-  , const ::iovec *last_
+  gsl::span<const ::iovec> buffers_
   , void *context_
 )
 {
-  auto desc = populated_desc(first_, last_);
-  post_send(first_, last_, &*desc.begin(), context_);
+  auto desc = populated_desc(buffers_);
+  post_send(buffers_, &*desc.begin(), context_);
 }
 
 /**
@@ -157,8 +155,7 @@ void Fabric_op_control::post_send(
  * @return Work (context) identifier
  */
 void Fabric_op_control::post_recv(
-  const ::iovec *first_
-  , const ::iovec *last_
+  gsl::span<const ::iovec> buffers_
   , void **desc_
   , void *context_
 )
@@ -166,9 +163,9 @@ void Fabric_op_control::post_recv(
   CHECK_FI_EQ(
     ::fi_recvv(
       &ep()
-      , first_
+      , &*buffers_.begin()
       , desc_
-      , std::size_t(last_ - first_)
+      , buffers_.size()
       , ::fi_addr_t{}
       , context_
     )
@@ -178,13 +175,12 @@ void Fabric_op_control::post_recv(
 }
 
 void Fabric_op_control::post_recv(
-  const ::iovec *first_
-  , const ::iovec *last_
+  gsl::span<const ::iovec> buffers_
   , void *context_
 )
 {
-  auto desc = populated_desc(first_, last_);
-  post_recv(first_, last_, &*desc.begin(), context_);
+  auto desc = populated_desc(buffers_);
+  post_recv(buffers_, &*desc.begin(), context_);
 }
 
   /**
@@ -198,8 +194,7 @@ void Fabric_op_control::post_recv(
    *
    */
 void Fabric_op_control::post_read(
-  const ::iovec *first_
-  , const ::iovec *last_
+  gsl::span<const ::iovec> buffers_
   , void **desc_
   , uint64_t remote_addr_
   , uint64_t key_
@@ -209,9 +204,9 @@ void Fabric_op_control::post_read(
   CHECK_FI_EQ(
     ::fi_readv(
       &ep()
-      , first_
+      , &*buffers_.begin()
       , desc_
-      , std::size_t(last_ - first_)
+      , buffers_.size()
       , ::fi_addr_t{}
       , remote_addr_
       , key_
@@ -223,15 +218,14 @@ void Fabric_op_control::post_read(
 }
 
 void Fabric_op_control::post_read(
-  const ::iovec *first_
-  , const ::iovec *last_
+  gsl::span<const ::iovec> buffers_
   , uint64_t remote_addr_
   , uint64_t key_
   , void *context_
 )
 {
-  auto desc = populated_desc(first_, last_);
-  post_read(first_, last_, &*desc.begin(), remote_addr_, key_, context_);
+  auto desc = populated_desc(buffers_);
+  post_read(buffers_, &*desc.begin(), remote_addr_, key_, context_);
 }
 
   /**
@@ -245,8 +239,7 @@ void Fabric_op_control::post_read(
    *
    */
 void Fabric_op_control::post_write(
-  const ::iovec *first_
-  , const ::iovec *last_
+  gsl::span<const ::iovec> buffers_
   , void **desc_
   , uint64_t remote_addr_
   , uint64_t key_
@@ -256,9 +249,9 @@ void Fabric_op_control::post_write(
   CHECK_FI_EQ(
     ::fi_writev(
       &ep()
-      , first_
+      , &*buffers_.begin()
       , desc_
-      , std::size_t(last_ - first_)
+      , buffers_.size()
       , ::fi_addr_t{}
       , remote_addr_
       , key_
@@ -270,15 +263,14 @@ void Fabric_op_control::post_write(
 }
 
 void Fabric_op_control::post_write(
-  const ::iovec *first_
-  , const ::iovec *last_
+  gsl::span<const ::iovec> buffers_
   , uint64_t remote_addr_
   , uint64_t key_
   , void *context_
 )
 {
-  auto desc = populated_desc(first_, last_);
-  post_write(first_, last_, &*desc.begin(), remote_addr_, key_, context_);
+  auto desc = populated_desc(buffers_);
+  post_write(buffers_, &*desc.begin(), remote_addr_, key_, context_);
 }
 
   /**
@@ -289,8 +281,7 @@ void Fabric_op_control::post_write(
    * @param len_ length of data to send (must not exceed max_inject_size())
    */
 void Fabric_op_control::sendmsg(
-	const ::iovec *first_
-	, const ::iovec *last_
+	gsl::span<const ::iovec> buffers_
 	, void **desc_
 	, ::fi_addr_t addr_
 	, void *context_
@@ -298,7 +289,7 @@ void Fabric_op_control::sendmsg(
 )
 {
 	const ::fi_msg m {
-		first_, desc_, std::size_t(last_ - first_), addr_, context_, flags
+		&*buffers_.begin(), desc_, buffers_.size(), addr_, context_, flags
 	};
 	CHECK_FI_EQ(::fi_sendmsg(&ep(), &m, flags), 0);
 

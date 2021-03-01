@@ -17,6 +17,7 @@
 #include <component/base.h> /* component::IBase, DECLARE_COMPONENT_UUID, DECLARE_INTERFACE_UUID */
 #include <common/byte_span.h>
 
+#include <gsl/span>
 #include <chrono>
 #include <cstddef> /* size_t */
 #include <cstdint> /* uint16_t, uint64_t */
@@ -243,31 +244,33 @@ class IFabric_communicator : public IFabric_op_completer {
   /**
    * Asynchronously post a buffer to the connection
    *
-   * @param buffers Buffer vector (containing regions should be registered)
+   * @param buffers Buffer span (containing regions should be registered)
    *
    * @return Work (context) identifier
    *
    * @throw IFabric_runtime_error std::runtime_error - ::fi_sendv fail
    */
-  virtual void post_send(const ::iovec *first, const ::iovec *last, void **descriptors, void *context) = 0;
-  virtual void post_send(const std::vector<::iovec> &buffers, void *context)                           = 0;
+  virtual void post_send(gsl::span<const ::iovec> buffers, void **descriptors, void *context) = 0;
+  void post_send(const ::iovec *first, const ::iovec *last, void **descriptors, void *context) { return post_send( {first, last}, descriptors, context); }
+  virtual void post_send(gsl::span<const ::iovec> buffers, void *context)                     = 0;
 
   /**
    * Asynchronously post a buffer to receive data
    *
-   * @param buffers Buffer vector (containing regions should be registered)
+   * @param buffers Buffer span (containing regions should be registered)
    *
    * @return Work (context) identifier
    *
    * @throw IFabric_runtime_error - ::fi_recvv fail
    */
-  virtual void post_recv(const ::iovec *first, const ::iovec *last, void **descriptors, void *context) = 0;
-  virtual void post_recv(const std::vector<::iovec> &buffers, void *context)                           = 0;
+  virtual void post_recv(gsl::span<const ::iovec> buffers, void **descriptors, void *context) = 0;
+  void post_recv(const ::iovec *first, const ::iovec *last, void **descriptors, void *context) { return post_recv( {first, last}, descriptors, context); }
+  virtual void post_recv(gsl::span<const ::iovec> buffers, void *context)                           = 0;
 
   /**
    * Post RDMA read operation
    *
-   * @param buffers Destination buffer vector
+   * @param buffers Destination buffer span
    * @param remote_addr Remote address
    * @param key Key for remote address
    * @param out_context
@@ -275,13 +278,18 @@ class IFabric_communicator : public IFabric_op_completer {
    * @throw IFabric_runtime_error - ::fi_readv fail
    *
    */
-  virtual void post_read(const ::iovec *first,
-                         const ::iovec *last,
+  virtual void post_read(gsl::span<const ::iovec> buffers,
                          void **        descriptors,
                          std::uint64_t  remote_addr,
                          std::uint64_t  key,
                          void *         context) = 0;
-  virtual void post_read(const std::vector<::iovec> &buffers,
+  void post_read(const ::iovec *first,
+                         const ::iovec *last,
+                         void **        descriptors,
+                         std::uint64_t  remote_addr,
+                         std::uint64_t  key,
+                         void *         context) { return post_read( { first, last }, descriptors, remote_addr, key, context); }
+  virtual void post_read(gsl::span<const ::iovec> buffers,
                          std::uint64_t               remote_addr,
                          std::uint64_t               key,
                          void *                      context) = 0;
@@ -289,7 +297,7 @@ class IFabric_communicator : public IFabric_op_completer {
   /**
    * Post RDMA write operation
    *
-   * @param buffers Source buffer vector
+   * @param buffers Source buffer span
    * @param remote_addr Remote address
    * @param key Key for remote address
    * @param out_context
@@ -297,13 +305,24 @@ class IFabric_communicator : public IFabric_op_completer {
    * @throw IFabric_runtime_error - ::fi_writev fail
    *
    */
-  virtual void post_write(const ::iovec *first,
-                          const ::iovec *last,
+  virtual void post_write(const gsl::span<const ::iovec> buffers,
                           void **        descriptors,
                           std::uint64_t  remote_addr,
                           std::uint64_t  key,
                           void *         context) = 0;
-  virtual void post_write(const std::vector<::iovec> &buffers,
+
+  void post_write(const ::iovec *first,
+                          const ::iovec *last,
+                          void **        descriptors,
+                          std::uint64_t  remote_addr,
+                          std::uint64_t  key,
+                          void *         context)
+  {
+    return post_write(
+      gsl::span<const ::iovec>(first, last), descriptors, remote_addr, key, context);
+  }
+
+  virtual void post_write(const gsl::span<const ::iovec> buffers,
                           std::uint64_t               remote_addr,
                           std::uint64_t               key,
                           void *                      context) = 0;

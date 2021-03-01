@@ -234,12 +234,6 @@ void *Fabric_memory_control::get_memory_descriptor(const memory_region_t mr_) co
   return ::fi_mr_desc(mr);
 }
 
-/* If local keys are needed, one local key per buffer. */
-std::vector<void *> Fabric_memory_control::populated_desc(const std::vector<::iovec> & buffers)
-{
-  return populated_desc(&*buffers.begin(), &*buffers.end());
-}
-
 /* find a registered memory region which covers the iovec range */
 ::fid_mr *Fabric_memory_control::covering_mr(const byte_span v)
 {
@@ -273,13 +267,14 @@ std::vector<void *> Fabric_memory_control::populated_desc(const std::vector<::io
   return &*it->second->mr;
 }
 
-std::vector<void *> Fabric_memory_control::populated_desc(const ::iovec *first, const ::iovec *last)
+/* If local keys are needed, one local key per buffer. */
+std::vector<void *> Fabric_memory_control::populated_desc(gsl::span<const ::iovec> buffers)
 {
   std::vector<void *> desc;
 
   std::transform(
-    first
-    , last
+    buffers.begin()
+    , buffers.end()
     , std::back_inserter(desc)
     , [this] (const ::iovec &v) { return ::fi_mr_desc(covering_mr(common::make_byte_span(v.iov_base, v.iov_len))); }
   );

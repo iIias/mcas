@@ -140,65 +140,61 @@ public:
    * @throw fabric_runtime_error : std::runtime_error : ::fi_sendv fail
    */
   void post_send(
-    const ::iovec *first
-    , const ::iovec *last
+    gsl::span<const ::iovec> buffers
     , void **desc
     , void *context
-  ) override { return Fabric_connection_server::post_send(first, last, desc, context); }
+  ) override { return Fabric_connection_server::post_send(buffers, desc, context); }
 
   void post_send(
-    const std::vector<::iovec>& buffers
+    gsl::span<const ::iovec> buffers
     , void *context
-  ) override { return Fabric_connection_server::post_send(&*buffers.begin(), &*buffers.end(), context); }
+  ) override { return Fabric_connection_server::post_send(buffers, context); }
 
   /*
    * @throw fabric_runtime_error : std::runtime_error : ::fi_recvv fail
    */
   void post_recv(
-    const ::iovec *first
-    , const ::iovec *last
+    gsl::span<const ::iovec> buffers
     , void **desc
     , void *context
-  ) override { return Fabric_connection_server::post_recv(first, last, desc, context); }
+  ) override { return Fabric_connection_server::post_recv(buffers, desc, context); }
 
   void post_recv(
-    const std::vector<::iovec>& buffers
+    gsl::span<const ::iovec> buffers
     , void *context
-  ) override { return Fabric_op_control::post_recv(&*buffers.begin(), &*buffers.end(), context); }
+  ) override { return Fabric_op_control::post_recv(buffers, context); }
   /*
    * @throw fabric_runtime_error : std::runtime_error : ::fi_readv fail
    */
   void post_read(
-    const ::iovec *first
-    , const ::iovec *last
+    gsl::span<const ::iovec> buffers
     , void **desc
     , std::uint64_t remote_addr
     , std::uint64_t key
     , void *context
-  ) override { return Fabric_op_control::post_read(first, last, desc, remote_addr, key, context); }
+  ) override { return Fabric_op_control::post_read(buffers, desc, remote_addr, key, context); }
   void post_read(
-    const std::vector<::iovec>& buffers,
+    gsl::span<const ::iovec> buffers,
     std::uint64_t remote_addr,
     std::uint64_t key,
     void *context
-  ) override { return Fabric_op_control::post_read(&*buffers.begin(), &*buffers.end(), remote_addr, key, context); }
+  ) override { return Fabric_op_control::post_read(buffers, remote_addr, key, context); }
   /*
    * @throw fabric_runtime_error : std::runtime_error : ::fi_writev fail
    */
   void post_write(
-    const ::iovec *first
-    , const ::iovec *last
+    gsl::span<const ::iovec> buffers
     , void **desc
     , std::uint64_t remote_addr
     , std::uint64_t key
     , void *context
-  ) override { return Fabric_op_control::post_write(first, last, desc, remote_addr, key, context); }
+  ) override { return Fabric_op_control::post_write(buffers, desc, remote_addr, key, context); }
   void post_write(
-    const std::vector<::iovec>& buffers,
+    gsl::span<const ::iovec> buffers,
     std::uint64_t remote_addr,
     std::uint64_t key,
     void *context
-  ) override { return Fabric_op_control::post_write(&*buffers.begin(), &*buffers.end(), remote_addr, key, context); }
+  ) override { return Fabric_op_control::post_write(buffers, remote_addr, key, context); }
   /*
    * @throw fabric_runtime_error : std::runtime_error : ::fi_inject fail
    */

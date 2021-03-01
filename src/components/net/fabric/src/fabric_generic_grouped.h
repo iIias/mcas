@@ -150,27 +150,25 @@ public:
   /*
    * @throw fabric_runtime_error : std::runtime_error : ::fi_sendv fail
    */
-  void post_send(const ::iovec *first, const ::iovec *last, void **desc, void *context);
-  void post_send(const ::iovec *first, const ::iovec *last, void *context);
+  void post_send(gsl::span<const ::iovec> buffers, void **desc, void *context);
+  void post_send(gsl::span<const ::iovec> buffers, void *context);
   /*
    * @throw fabric_runtime_error : std::runtime_error : ::fi_recvv fail
    */
-  void post_recv(const ::iovec *first, const ::iovec *last, void **desc, void *context);
-  void post_recv(const ::iovec *first, const ::iovec *last, void *context);
+  void post_recv(gsl::span<const ::iovec> buffers, void **desc, void *context);
+  void post_recv(gsl::span<const ::iovec> buffers, void *context);
   /*
    * @throw fabric_runtime_error : std::runtime_error : ::fi_readv fail
    */
   void post_read(
-    const ::iovec *first
-    , const ::iovec *last
+    gsl::span<const ::iovec> buffers
     , void **desc
     , std::uint64_t remote_addr
     , std::uint64_t key
     , void *context
   );
   void post_read(
-    const ::iovec *first
-    , const ::iovec *last
+    gsl::span<const ::iovec> buffers
     , std::uint64_t remote_addr
     , std::uint64_t key
     , void *context
@@ -179,16 +177,14 @@ public:
    * @throw fabric_runtime_error : std::runtime_error : ::fi_writev fail
    */
   void post_write(
-    const ::iovec *first
-    , const ::iovec *last
+    gsl::span<const ::iovec> buffers
     , void **desc
     , std::uint64_t remote_addr
     , std::uint64_t key
     , void *context
   );
   void post_write(
-    const ::iovec *first
-    , const ::iovec *last
+    gsl::span<const ::iovec> buffers
     , std::uint64_t remote_addr
     , std::uint64_t key
     , void *context
