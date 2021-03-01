@@ -21,7 +21,9 @@
 #include <common/byte_span.h>
 #include <common/pointer_cast.h>
 #include <common/string_view.h>
+#include <gsl/span>
 
+#include <array>
 #include <cstdint> /* uint16_t */
 #include <memory>
 
@@ -269,10 +271,27 @@ public:
    */
   virtual status_t put_direct(const IMCAS::pool_t   pool,
                               const std::string&    key,
+                              gsl::span<const common::const_byte_span> values,
+                              gsl::span<memory_handle_t> handles = gsl::span<memory_handle_t>(),
+                              const unsigned int    flags  = IMCAS::FLAGS_NONE) = 0;
+
+  virtual status_t put_direct(const IMCAS::pool_t   pool,
+                              const std::string&    key,
                               const void*           value,
                               const size_t          value_len,
                               const memory_handle_t handle = IMCAS::MEMORY_HANDLE_NONE,
-                              const unsigned int    flags  = IMCAS::FLAGS_NONE) = 0;
+                              const unsigned int    flags  = IMCAS::FLAGS_NONE)
+	{
+		std::array<const common::const_byte_span,1> values {common::make_const_byte_span(value, value_len)};
+		std::array<memory_handle_t,1> handles { handle };
+		return put_direct(
+			pool
+			, key
+			, values
+			, handles
+			, flags
+		);
+	}
 
   /**
    * Asynchronous put operation.  Use check_async_completion to check for
@@ -324,7 +343,33 @@ public:
                                     const size_t          value_len,
                                     async_handle_t&       out_handle,
                                     const memory_handle_t handle = IMCAS::MEMORY_HANDLE_NONE,
+                                    const unsigned int    flags  = IMCAS::FLAGS_NONE)
+  {
+    std::array<common::const_byte_span,1> values { common::make_const_byte_span(value, value_len) };
+    std::array<memory_handle_t,1> handles { handle };
+    return async_put_direct(pool, key, values, out_handle, handles, flags);
+  }
+
+  /**
+   * Asynchronous put_direct operation.  Use check_async_completion to check for
+   * completion.
+   *
+   * @param pool Pool handle
+   * @param key Object key
+   * @param value list of value sources
+   * @param handle Memory registration handle
+   * @param out_handle Async handle
+   * @param flags Optional flags
+   *
+   * @return S_OK or other error code
+   */
+  virtual status_t async_put_direct(const IMCAS::pool_t   pool,
+                                    const std::string&    key,
+                                    gsl::span<const common::const_byte_span> value,
+                                    async_handle_t&       out_handle,
+                                    gsl::span<memory_handle_t> handles = gsl::span<memory_handle_t>(),
                                     const unsigned int    flags  = IMCAS::FLAGS_NONE) = 0;
+
   /**
    * Read an object value
    *

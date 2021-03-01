@@ -200,6 +200,15 @@ class Fabric_transport : protected common::log_source {
    *
    * @param iob First IO buffer
    */
+  void post_write(gsl::span<const ::iovec> iov,
+                  void **        desc,
+                  uint64_t       remote_addr,
+                  std::uint64_t  remote_key,
+                  void *         context)
+  {
+    _transport->post_write(iov, desc, remote_addr, remote_key, context);
+  }
+#if 0
   void post_write(const ::iovec *first,
                   const ::iovec *last,
                   void **        desc,
@@ -209,6 +218,7 @@ class Fabric_transport : protected common::log_source {
   {
     _transport->post_write(first, last, desc, remote_addr, remote_key, context);
   }
+#endif
 
   /**
    * Post read (DMA)
