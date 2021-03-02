@@ -144,7 +144,11 @@ struct mr_many
 			_vec.emplace_back(
 				rmd_
 				, range_[i]
-				, handles_[i] == IKVStore::HANDLE_NONE ? nullptr : static_cast<client::Fabric_transport::buffer_base *>(handles_[i])->get_desc()
+				/* If no handle provided, or handle value is "HANDLE_NONE",
+				 * Then ask memory_registered to create/destruct a one-time handle
+				 * Else, use the provided handle.
+				 */
+				, handles_.size() <= i || handles_[i] == IKVStore::HANDLE_NONE ? nullptr : static_cast<client::Fabric_transport::buffer_base *>(handles_[i])->get_desc()
 			);
 		}
 	}
@@ -431,13 +435,21 @@ public:
       /* reply have been received, with credentials for the DMA */
 
       CPLOG(2,
-            "%s post_write %p local (addr %p.%zx desc %p) -> (_addr 0x%zx, key 0x%zx)"
+            "%s post_write %p -> (_addr 0x%zx, key 0x%zx)"
             , __func__
             , common::p_fmt(&*_iobrd)
-            , _v[0].iov_base, _v[0].iov_len
-            , _desc[0]
             , _addr, key
             );
+      for ( std::size_t i = 0; i != _v.size(); ++i )
+      {
+         CPLOG(2,
+            "%s post_write local (addr %p.%zx desc %p)"
+            , __func__
+            , _v[i].iov_base, _v[i].iov_len
+            , _desc[i]
+            );
+      }
+
       c->post_write(_v, &*_desc.begin(), _addr, key, &*_iobrd);
       /* End */
     }
@@ -1805,7 +1817,7 @@ status_t Connection_handler::get(const pool_t pool, const std::string &key, std:
         }
         madvise(value, data_len, MADV_HUGEPAGE);
 
-        auto  region = make_memory_registered(value, data_len); /* we could have some pre-registered? */
+        auto  region = make_memory_registered(common::make_const_byte_span(value, data_len)); /* we could have some pre-registered? */
         void *desc[] = {region.get_memory_descriptor()};
 
         ::iovec iov[]{{value, data_len - 1}};

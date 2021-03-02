@@ -44,7 +44,7 @@ protected:
   ~Registrar_memory_direct() {}
 public:
   using memory_handle_t = IKVStore::memory_handle_t;
-  
+
   /**
    * Register memory for zero copy DMA
    *
@@ -53,7 +53,20 @@ public:
    *
    * @return Memory handle or NULL on not supported.
    */
-  virtual memory_handle_t register_direct_memory(void* vaddr, const size_t len) = 0;
+  virtual memory_handle_t register_direct_memory(common::const_byte_span bytes) = 0;
+
+  /**
+   * Register memory for zero copy DMA
+   *
+   * @param vaddr Appropriately aligned memory buffer
+   * @param len Length of memory buffer in bytes
+   *
+   * @return Memory handle or NULL on not supported.
+   */
+  memory_handle_t register_direct_memory(void* vaddr, const size_t len)
+  {
+    return register_direct_memory(common::make_const_byte_span(vaddr, len));
+  }
 
   /**
    * Direct memory regions should be unregistered before the memory is released
@@ -83,7 +96,7 @@ public:
   using Attribute       = IKVStore::Attribute;
   using Addr            = IKVStore::Addr;
   using byte            = common::byte;
-  
+
   template <typename T>
     using basic_string_view = std::experimental::basic_string_view<T>;
 
@@ -102,7 +115,7 @@ public:
         FLAGS_MAX_VALUE   = IKVStore::FLAGS_MAX_VALUE,
   };
 
-  
+
   /* per-shard statistics */
   struct Shard_stats {
     uint64_t op_request_count;
@@ -257,6 +270,30 @@ public:
   }
 
   /**
+   * Zero-copy put_direct operation.  If there does not exist an object
+   * with matching key, then an error E_KEY_EXISTS should be returned.
+   *
+   * The list of handles corresponds to the list of values.
+   * If any handle is IMCAS::MEMORY_HANDLE_NONE, or there is no handle
+   * for a value, a one-time handle will be created, used, and
+   * destructed. The create/destruct will incur a performance cost.
+   *
+   * @param pool Pool handle
+   * @param key Object key
+   * @param values List of value sources (ptr, length pairs)
+   * @param out_handle Async handle
+   * @param handles List of memory registration handles (returned from register_direct_memory())
+   * @param flags Optional flags
+   *
+   * @return S_OK or other error code
+   */
+  virtual status_t put_direct(const IMCAS::pool_t   pool,
+                              const std::string&    key,
+                              gsl::span<const common::const_byte_span> values,
+                              gsl::span<const memory_handle_t> handles = gsl::span<const memory_handle_t>(),
+                              const unsigned int    flags  = IMCAS::FLAGS_NONE) = 0;
+
+  /**
    * Zero-copy put operation.  If there does not exist an object
    * with matching key, then an error E_KEY_EXISTS should be returned.
    *
@@ -269,12 +306,6 @@ public:
    *
    * @return S_OK or error code
    */
-  virtual status_t put_direct(const IMCAS::pool_t   pool,
-                              const std::string&    key,
-                              gsl::span<const common::const_byte_span> values,
-                              gsl::span<const memory_handle_t> handles = gsl::span<const memory_handle_t>(),
-                              const unsigned int    flags  = IMCAS::FLAGS_NONE) = 0;
-
   virtual status_t put_direct(const IMCAS::pool_t   pool,
                               const std::string&    key,
                               const void*           value,
@@ -359,9 +390,9 @@ public:
    *
    * @param pool Pool handle
    * @param key Object key
-   * @param value list of value sources
-   * @param handle Memory registration handle
+   * @param values list of value sources
    * @param out_handle Async handle
+   * @param handle List of memory registration handle
    * @param flags Optional flags
    *
    * @return S_OK or other error code

@@ -327,7 +327,7 @@ status_t MCAS_client::async_put_direct_offset(const IMCAS::pool_t          pool,
   return _connection->async_put_direct_offset(pool, offset, length, out_buffer, out_handle, this, handle);
 }
 
-component::IKVStore::memory_handle_t MCAS_client::register_direct_memory(void *vaddr, const size_t len)
+component::IKVStore::memory_handle_t MCAS_client::register_direct_memory(common::const_byte_span mem)
 {
   /* register_direct_memory is exposed at the interface. A failure of madvise
    * might well be expected if the parameters passed in at the interface are
@@ -335,13 +335,12 @@ component::IKVStore::memory_handle_t MCAS_client::register_direct_memory(void *v
    * fixed by using On Demand Paging (ODP), which should remove the need for
    * madvise.
    */
-  if (madvise(vaddr, len, MADV_DONTFORK) != 0) {
-    
-    PWRN("MCAS_client::%s: madvise MADV_DONTFORK failed (%p %lu) %s", __func__, vaddr, len, strerror(errno));
+  if (madvise(const_cast<void *>(::base(mem)), ::size(mem), MADV_DONTFORK) != 0) {
+    PWRN("MCAS_client::%s: madvise MADV_DONTFORK failed (%p %lu) %s", __func__, ::base(mem), ::size(mem), strerror(errno));
     //    assert(false);
   }
 
-  return _connection->register_direct_memory(vaddr, len);
+  return _connection->register_direct_memory(mem);
 }
 
 status_t MCAS_client::unregister_direct_memory(IKVStore::memory_handle_t handle)

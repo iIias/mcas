@@ -85,15 +85,15 @@ class Fabric_transport : protected common::log_source {
    * Forwarders that allow us to avoid exposing _transport and _bm
    *
    */
-  auto inline make_memory_registered(void *base, size_t len)
+  auto inline make_memory_registered(common::const_byte_span region)
   {
-    return memory_registered_fabric(debug_level(), _transport, base, len, 0, 0);
+    return memory_registered_fabric(debug_level(), _transport, region, 0, 0);
   }
 
  private:
-  inline memory_region_t register_memory(void *base, size_t len)
+  inline memory_region_t register_memory(common::const_byte_span region)
   {
-    return _transport->register_memory(base, len, 0, 0);
+    return _transport->register_memory(region, 0, 0);
   }
 
  public:
@@ -235,14 +235,14 @@ class Fabric_transport : protected common::log_source {
     _transport->post_read(first, last, desc, remote_addr, remote_key, context);
   }
 
-  component::IKVStore::memory_handle_t register_direct_memory(void *region, size_t region_len)
+  component::IKVStore::memory_handle_t register_direct_memory(common::const_byte_span region)
   {
     // if (!check_aligned(region, 64))
     //   throw API_exception("register_direct_memory: region should be
     //   aligned");
 
-    auto buffer = new buffer_external(debug_level(), _transport, region, region_len);
-    CPLOG(0, "register_direct_memory (%p, %lu, mr=%p)", region, region_len, common::p_fmt(buffer->region()));
+    auto buffer = new buffer_external(debug_level(), _transport, const_cast<void *>(::base(region)), ::size(region));
+    CPLOG(0, "register_direct_memory (%p, %lu, mr=%p)", ::base(region), ::size(region), common::p_fmt(buffer->region()));
     return buffer;
   }
 
