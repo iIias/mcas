@@ -15,6 +15,7 @@
 #define __API_KVSTORE_ITF__
 
 #include <api/components.h>
+#include <common/byte_span.h>
 #include <common/errors.h> /* ERROR_BASE */
 #include <common/time.h>
 #include <sys/uio.h> /* iovec */
@@ -515,15 +516,26 @@ class IKVStore : public component::IBase {
   /**
    * Register memory for zero copy DMA
    *
+   * @param mem Appropriately aligned memory buffer
+   *
+   * @return Memory handle or NULL on not supported.
+   */
+  virtual memory_handle_t register_direct_memory(common::const_byte_span mem)
+  {
+    return nullptr;
+  }
+  /**
+   * Register memory for zero copy DMA
+   *
    * @param vaddr Appropriately aligned memory buffer
    * @param len Length of memory buffer in bytes
    *
    * @return Memory handle or NULL on not supported.
    */
-  virtual memory_handle_t register_direct_memory(void* vaddr,
+  memory_handle_t register_direct_memory(void* vaddr,
                                                  size_t len)
   {
-    return nullptr;
+    return register_direct_memory(common::make_const_byte_span(vaddr, len));
   }
 
   /**
