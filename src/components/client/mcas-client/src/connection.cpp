@@ -44,6 +44,7 @@ static constexpr const unsigned TLS_DEBUG_LEVEL = 3;
 static constexpr const char* ENVIRONMENT_VARIABLE_CERT = "CERT";
 static constexpr const char* ENVIRONMENT_VARIABLE_KEY = "KEY";
 static constexpr const char* ENVIRONMENT_VARIABLE_SC = "SHORT_CIRCUIT_BACKEND";
+static constexpr const char* ENVIRONMENT_VARIABLE_FORCE_DIRECT = "FORCE_DIRECT";
 
 /* static constructor called once */
 static void print_logs(int level, const char* msg) { printf("GnuTLS [%d]: %s", level, msg); }
@@ -917,6 +918,9 @@ Connection_handler::Connection_handler(const unsigned              debug_level,
   if(::getenv(ENVIRONMENT_VARIABLE_KEY) && ::getenv(ENVIRONMENT_VARIABLE_CERT))
     _options.tls = true;
 
+  if(::getenv(ENVIRONMENT_VARIABLE_FORCE_DIRECT))
+    _force_direct = true;
+
   if(!other.empty()) {
     try {
       rapidjson::Document doc;
@@ -1426,10 +1430,20 @@ IMCAS::async_handle_t Connection_handler::put_direct_offset_async(const pool_t  
    * client: send LOCATE request recv LOCATE response read DMA send RELEASE
    * request recv RELEASE response
    */
-  return
-    static_cast<IMCAS::async_handle_t>(new async_buffer_set_put_direct_offset(
-                                                                                                         debug_level(), rmd_, std::move(iobs), std::move(iobr), iob_ptr(nullptr, this), make_iob_ptr_send(),
-                                                                                                         make_iob_ptr_recv(), pool_, auth_id(), offset_, buffer_, length_, desc_));
+  return static_cast<IMCAS::async_handle_t>
+    (new async_buffer_set_put_direct_offset(debug_level(),
+                                                                         rmd_,
+                                                                         std::move(iobs),
+                                                                         std::move(iobr),
+                                                                         iob_ptr(nullptr, this),
+                                                                         make_iob_ptr_send(),
+                                                                         make_iob_ptr_recv(),
+                                                                         pool_,
+                                                                         auth_id(),
+                                                                         offset_,
+                                                                         buffer_,
+                                                                         length_,
+                                                                         desc_));
 }
 
 IMCAS::async_handle_t
@@ -1447,8 +1461,9 @@ Connection_handler::get_locate_async(const pool_t                        pool,
   const auto buffer_len = value_len;
 
   /* send advance leader message */
-  const auto msg = new (iobs->base()) protocol::Message_IO_request(
-                                                                   iobs->length(), auth_id(), request_id(), pool, protocol::OP_GET_LOCATE, key, key_len, value_len, flags);
+  const auto msg = new (iobs->base())
+    protocol::Message_IO_request(iobs->length(), auth_id(), request_id(), pool, protocol::OP_GET_LOCATE, key, key_len, value_len, flags);
+  
   iobs->set_length(msg->msg_len());
 
   post_recv(&*iobr);
@@ -1478,10 +1493,19 @@ Connection_handler::get_locate_async(const pool_t                        pool,
    *   send GET_RELEASE request
    *   recv GET_RELEASE response
    */
-  return
-    static_cast<IMCAS::async_handle_t>(new async_buffer_set_get_locate(
-                                                                                                  debug_level(), rmd_, make_iob_ptr_read(), make_iob_ptr_send(),
-                                                                                                  make_iob_ptr_recv(), pool, auth_id(), value, transfer_len, this, desc_, addr, memory_key));
+  return static_cast<IMCAS::async_handle_t>(new async_buffer_set_get_locate(debug_level(),
+                                                                                                                 rmd_,
+                                                                                                                 make_iob_ptr_read(),
+                                                                                                                 make_iob_ptr_send(),
+                                                                                                                 make_iob_ptr_recv(),
+                                                                                                                 pool,
+                                                                                                                 auth_id(),
+                                                                                                                 value,
+                                                                                                                 transfer_len,
+                                                                                                                 this,
+                                                                                                                 desc_,
+                                                                                                                 addr,
+                                                                                                                 memory_key));
 }
 
 status_t Connection_handler::put_direct(pool_t                               pool_,
@@ -1583,13 +1607,12 @@ status_t Connection_handler::async_put_direct(const IMCAS::pool_t               
     auto iobr = make_iob_ptr_recv();
     auto iobs = make_iob_ptr_send();
 
-    if (
-        values_.size() == 1 /* A simplification. We could change the small put code to handle multiple source */
-		&&
-        mcas::protocol::Message_IO_request::would_fit(key_len_ + ::size(values_.front()), iobs->original_length())
+    if (values_.size() == 1 /* A simplification. We could change the small put code to handle multiple source */
         &&
-        mem_handles_.front() != IKVStore::HANDLE_NONE
-        ) {
+        (_force_direct == false) &&
+        (mcas::protocol::Message_IO_request::would_fit(key_len_ + ::size(values_.front()), iobs->original_length())) &&
+        (mem_handles_.size() != 0 && mem_handles_.front() != IKVStore::HANDLE_NONE)) {
+
       /* Fast path: small size and memory already registered */
       CPLOG(1, "%s: using small send for direct put key=(%.*s) key_len=%lu value=(%.20s...) value_len=%lu", __func__, int(key_len_),
             static_cast<const char *>(key_), key_len_, static_cast<const char *>(::base(values_.front())), ::size(values_.front()));
@@ -1614,7 +1637,8 @@ status_t Connection_handler::async_put_direct(const IMCAS::pool_t               
     else
       {
         /* for large puts, where the receiver will not have
-         * sufficient buffer space, we use put locate (DMA write) protocol */
+         * sufficient buffer space, we use put locate (DMA write) protocol
+         */
         out_async_handle_ = put_locate_async(
                                              pool_, key_, key_len_, values_, rmd_,
                                              mem_handles_, flags_);
@@ -1663,8 +1687,7 @@ status_t Connection_handler::async_get_direct(const IMCAS::pool_t               
     auto iobr = make_iob_ptr_recv();
     auto iobs = make_iob_ptr_send();
 
-    out_async_handle_ = get_locate_async(
-                                         pool_, key_, key_len_, value_, value_len_, rmd_,
+    out_async_handle_ = get_locate_async(pool_, key_, key_len_, value_, value_len_, rmd_,
                                          mem_handle_ == IKVStore::HANDLE_NONE ? nullptr : static_cast<buffer_base *>(mem_handle_)->get_desc(), flags_);
     return S_OK;
   }
@@ -1926,8 +1949,7 @@ status_t Connection_handler::get(const pool_t pool, const std::string &key, std:
     }
 
     try {
-      out_async_handle_ = get_direct_offset_async(
-                                                  pool_, offset_, buffer_, length_, rmd_,
+      out_async_handle_ = get_direct_offset_async(pool_, offset_, buffer_, length_, rmd_,
                                                   mem_handle_ == IMCAS::MEMORY_HANDLE_NONE ? nullptr : static_cast<buffer_base *>(mem_handle_)->get_desc());
       return S_OK;
     }
@@ -1964,8 +1986,7 @@ status_t Connection_handler::get(const pool_t pool, const std::string &key, std:
     }
 
     try {
-      out_async_handle_ = put_direct_offset_async(
-                                                  pool_, offset_, buffer_, length_, rmd_,
+      out_async_handle_ = put_direct_offset_async(pool_, offset_, buffer_, length_, rmd_,
                                                   mem_handle_ == IMCAS::MEMORY_HANDLE_NONE ? nullptr : static_cast<buffer_base *>(mem_handle_)->get_desc());
       return S_OK;
     }
@@ -1992,8 +2013,7 @@ status_t Connection_handler::get(const pool_t pool, const std::string &key, std:
     status_t status;
 
     try {
-      const auto msg = new (iobs->base()) mcas::protocol::Message_IO_request(
-                                                                             iobs->length(), auth_id(), request_id(), pool, mcas::protocol::OP_ERASE, key.c_str(), key.length(), 0);
+      const auto msg = new (iobs->base()) mcas::protocol::Message_IO_request(iobs->length(), auth_id(), request_id(), pool, mcas::protocol::OP_ERASE, key.c_str(), key.length(), 0);
 
       post_recv(&*iobr);
       sync_inject_send(&*iobs, msg, __func__);

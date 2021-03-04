@@ -28,7 +28,7 @@ namespace mcas
 {
 namespace global
 {
-unsigned debug_level = 3;
+unsigned debug_level = 0;
 }
 }  // namespace mcas
 
@@ -336,8 +336,8 @@ component::IKVStore::memory_handle_t MCAS_client::register_direct_memory(common:
    * madvise.
    */
   if (madvise(const_cast<void *>(::base(mem)), ::size(mem), MADV_DONTFORK) != 0) {
-    PWRN("MCAS_client::%s: madvise MADV_DONTFORK failed (%p %lu) %s", __func__, ::base(mem), ::size(mem), strerror(errno));
-    //    assert(false);
+    if (debug_level() > 2)
+      PWRN("MCAS_client::%s: madvise MADV_DONTFORK failed (%p %lu) %s", __func__, ::base(mem), ::size(mem), strerror(errno));
   }
 
   return _connection->register_direct_memory(mem);

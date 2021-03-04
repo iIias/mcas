@@ -270,8 +270,9 @@ public:
   }
 
   /**
-   * Zero-copy put_direct operation.  If there does not exist an object
-   * with matching key, then an error E_KEY_EXISTS should be returned.
+   * Zero-copy put operation (if value size > ~2MiB).  If there does
+   * not exist an object with matching key, then an error E_KEY_EXISTS
+   * should be returned.  Use FORCE_DIRECT=1 to force zero-copy.
    *
    * The list of handles corresponds to the list of values.
    * If any handle is IMCAS::MEMORY_HANDLE_NONE, or there is no handle
@@ -294,8 +295,7 @@ public:
                               const unsigned int    flags  = IMCAS::FLAGS_NONE) = 0;
 
   /**
-   * Zero-copy put operation.  If there does not exist an object
-   * with matching key, then an error E_KEY_EXISTS should be returned.
+   * Zero-copy put operation (see exceptions above).
    *
    * @param pool Pool handle
    * @param key Object key
