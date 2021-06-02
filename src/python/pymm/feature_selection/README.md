@@ -1,7 +1,7 @@
 # Feature Selection Example
 
 NOTE: Experimental feature
-please first read:  [PYMM](../../../../info/pymm.md) 
+please first read:  [PYMM](https://github.com/IBM/mcas/blob/master/info/pymm.md) 
 
 Store data to the shelf
 In this example:
