@@ -33,5 +33,5 @@ $ python3 Feature_selection_DRAM.py
 
 Run with NVM   
 ```
-$ python3 Feature_selection_DRAM.py
+$ python3 Feature_selection_NVM.py
 ```
