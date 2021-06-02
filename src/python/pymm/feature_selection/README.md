@@ -25,6 +25,7 @@ items after loading
 
 Run with DRAM -> copy the data to DRAM 
 ```bash
+$ python3 Feature_selection_DRAM.py
 ```
 
 
@@ -32,4 +33,5 @@ Run with DRAM -> copy the data to DRAM
 
 Run with NVM   
 ```
+$ python3 Feature_selection_DRAM.py
 ```
