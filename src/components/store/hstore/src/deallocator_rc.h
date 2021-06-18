@@ -12,8 +12,8 @@
 */
 
 
-#ifndef COMANCHE_HSTORE_DEALLOCATOR_RC_H
-#define COMANCHE_HSTORE_DEALLOCATOR_RC_H
+#ifndef MCAS_HSTORE_DEALLOCATOR_RC_H
+#define MCAS_HSTORE_DEALLOCATOR_RC_H
 
 #include "hstore_config.h"
 #include "heap_access.h"
