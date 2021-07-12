@@ -15,17 +15,6 @@ PUBLIC status_t mm_plugin_init()
   return S_OK;
 }
 
-namespace
-{
-	struct persister final
-		: public ccpm::persister
-	{
-		/* no support for persist here. */
-		void persist(common::byte_span) override {}
-	};
-	persister mm_persister;
-}
-
 PUBLIC status_t mm_plugin_create(
 	void *persister /* actual type: ccpm::persister * */
 	, const void *regions /* actual type: gsl::span<common::byte_span> * */
