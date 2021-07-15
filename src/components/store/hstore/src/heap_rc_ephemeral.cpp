@@ -61,9 +61,18 @@ void *heap_rc_ephemeral::allocate(std::size_t sz_, unsigned _numa_node_, std::si
 	return p;
 }
 
-void heap_rc_ephemeral::free(void *p_, std::size_t sz_, unsigned numa_node_)
+std::size_t heap_rc_ephemeral::free(persistent_t<void *> &p_, std::size_t sz_, unsigned numa_node_)
 {
 	_heap.free(p_, int(numa_node_), sz_);
+	p_ = nullptr;
+	_allocated -= sz_;
+	_hist_free.enter(sz_);
+	return sz_;
+}
+
+void heap_rc_ephemeral::free_tracked(const void *p_, std::size_t sz_, unsigned numa_node_)
+{
+	_heap.free(const_cast<void *>(p_), int(numa_node_), sz_);
 	_allocated -= sz_;
 	_hist_free.enter(sz_);
 }

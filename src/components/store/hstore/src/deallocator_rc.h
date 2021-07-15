@@ -17,9 +17,11 @@
 
 #include "hstore_config.h"
 #include "heap_access.h"
+#include "persistent.h"
 #include "persister_cc.h"
 
 #include <cstddef> /* size_t, ptrdiff_t */
+#include <stdexcept> /* logic_error */
 
 template <typename T, typename Heap, typename Persister>
 	struct deallocator_rc;
@@ -39,13 +41,10 @@ template <typename T, typename Heap, typename Persister = persister>
 		heap_access<heap_type> _pool;
 	public:
 		using value_type = T;
+		using persister_type = Persister;
 		using size_type = std::size_t;
-#if 0
-		explicit deallocator_rc(void *area_, Persister p_ = Persister())
-			: Persister(p_)
-			, _pool(area_)
-		{}
-#endif
+		using pointer_type = persistent_t<value_type *>;
+
 		explicit deallocator_rc(const heap_access<heap_type> &pool_, Persister p_ = Persister()) noexcept
 			: Persister(p_)
 			, _pool(pool_)
@@ -60,22 +59,40 @@ template <typename T, typename Heap, typename Persister = persister>
 
 		deallocator_rc &operator=(const deallocator_rc &e_) = delete;
 
-		void deallocate(
-			T* p
-			, size_type sz_
-			, size_type alignment_ = alignof(T)
-		)
+		/* Note: although the probably should not be called, arm and disarm ought to
+		 * be safe as no-ops.
+		 */
+		void emplace_arm()
 		{
-			_pool->free(p, sizeof(T) * sz_, alignment_);
+			throw std::logic_error(__func__ + std::string(" call without crash-consistent heap"));
 		}
 
-		void deallocate_tracked(
-			T* p
+		void emplace_disarm()
+		{
+			throw std::logic_error(__func__ + std::string(" call without crash-consistent heap"));
+		}
+
+		void deallocate(
+			pointer_type & p_
 			, size_type sz_
 			, size_type alignment_ = alignof(T)
 		)
 		{
-			_pool->free_tracked(p, sizeof(T) * sz_, alignment_);
+			_pool->free(reinterpret_cast<persistent_t<void *> &>(p_), sizeof(T) * sz_, alignment_);
+		}
+
+		/*
+		 * The "reconstituting" allocator does not track memory allocations.
+		 * The memory used by kvstore::alloc_memory anmd kvstore::free_memory
+		 * must therefore be tracked by someone else. That job falls to hstore,
+		 * even though it has nothing to do with the hash store. 
+		 */
+		void deallocate_tracked(
+			const void *p_
+			, size_type  sz_
+		)
+		{
+			_pool->free_tracked(p_, sizeof(T) * sz_);
 		}
 
 		void persist(const void *ptr, size_type len, const char * = nullptr) const

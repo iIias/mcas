@@ -140,6 +140,8 @@ public:
 
 	void add_managed_region(const byte_span &r_full, const byte_span &r_heap, unsigned numa_node);
 	std::size_t free(persistent_t<void *> *p_, std::size_t sz_);
+	void free_tracked(const void *p, std::size_t sz, unsigned numa_node);
+	bool is_crash_consistent() const { return true; }
 };
 
 #endif

@@ -129,12 +129,20 @@ void *heap_mr_ephemeral::allocate(
 }
 
 void heap_mr_ephemeral::free(
-	void *p_
+	void *&p_
 	, std::size_t sz_
 	, unsigned // numa_node_
 )
 {
 	_heap.free(p_, sz_);
+	_allocated -= sz_;
+	_hist_free.enter(sz_);
+}
+
+void heap_mr_ephemeral::free_tracked(const void *p_, std::size_t sz_, unsigned)
+{
+	void *p = const_cast<void *>(p_);
+	_heap.free(p, sz_);
 	_allocated -= sz_;
 	_hist_free.enter(sz_);
 }

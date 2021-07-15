@@ -170,27 +170,29 @@ std::size_t heap_cc_ephemeral::free(persistent_t<void *> *p_, std::size_t sz_)
 	 *
 	 * The free, however, does not return a size. Pretend that it does.
 	 */
-#if HEAP_CONSISTENT
+	if ( is_crash_consistent() )
+	{
 	/* Note: order of testing is important. An extend arm+allocate) can occur while
 	 * emplace is armed, but not vice-versa
 	 */
-	if ( _asx->is_armed() )
-	{
-		CPLOG(1, PREFIX "unexpected segment deallocation of %p of %zu", LOCATION, persistent_ref(*p_), sz_);
-		abort();
+		if ( _asx->is_armed() )
+		{
+			CPLOG(1, PREFIX "unexpected segment deallocation of %p of %zu", LOCATION, persistent_ref(*p_), sz_);
+			abort();
 #if 0
-		_asx->record_deallocation(&persistent_ref(*p_), persister_nupm());
+			_asx->record_deallocation(&persistent_ref(*p_), persister_nupm());
 #endif
+		}
+		else if ( _ase->is_armed() )
+		{
+			_ase->record_deallocation(&persistent_ref(*p_), persister_nupm());
+		}
+		else
+		{
+			CPLOG(1, PREFIX "leaky deallocation of %p of %zu", LOCATION, persistent_ref(*p_), sz_);
+		}
 	}
-	else if ( _ase->is_armed() )
-	{
-		_ase->record_deallocation(&persistent_ref(*p_), persister_nupm());
-	}
-	else
-	{
-		CPLOG(1, PREFIX "leaky deallocation of %p of %zu", LOCATION, persistent_ref(*p_), sz_);
-	}
-#endif
+
 	/* IHeap interface does not support abstract pointers. Cast to regular pointer */
 	auto sz = (_heap->free(*reinterpret_cast<void **>(p_), sz_), sz_);
 	/* We would like to carry the persistent_t through to the crash-conssitent allocator,
@@ -201,4 +203,11 @@ std::size_t heap_cc_ephemeral::free(persistent_t<void *> *p_, std::size_t sz_)
 	_allocated -= sz;
 	_hist_free.enter(sz);
 	return sz;
+}
+
+void heap_cc_ephemeral::free_tracked(const void *p_, std::size_t sz_, unsigned)
+{
+	_heap->free(const_cast<void *&>(p_), sz_);
+	_allocated -= sz_;
+	_hist_free.enter(sz_);
 }

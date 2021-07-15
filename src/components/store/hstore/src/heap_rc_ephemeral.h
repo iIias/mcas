@@ -21,6 +21,7 @@
 #include "hstore_config.h"
 #include "histogram_log2.h"
 #include "hop_hash_log.h"
+#include "persistent.h"
 
 #include <boost/icl/interval_set.hpp>
 #include <common/byte_span.h>
@@ -98,8 +99,11 @@ public:
 	void inject_allocation(void *p, std::size_t sz, unsigned numa_node) override;
 	void *allocate(std::size_t sz, unsigned numa_node, std::size_t alignment);
 	void *allocate_tracked(std::size_t sz, unsigned numa_node, std::size_t alignment);
-	void free(void *p, std::size_t sz, unsigned numa_node);
+	void free_tracked(const void *p, std::size_t sz, unsigned numa_node);
+	std::size_t free(persistent_t<void *> &p_, std::size_t sz_);
+	std::size_t free(persistent_t<void *> &p_, std::size_t sz_, unsigned numa_node_);
 	bool is_reconstituted(const void *p) const;
+	bool is_crash_consistent() const { return false; }
 	using common::log_source::debug_level;
 };
 

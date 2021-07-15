@@ -17,23 +17,19 @@
 
 #include "hstore_config.h"
 
-#if HEAP_OID
-#include "allocator_co.h"
-#elif HEAP_RECONSTITUTE
- #include "allocator_rc.h"
- #if HEAP_MM
-  #include "heap_mr.h"
- #else
-  #include "heap_rc.h"
- #endif
-#elif HEAP_CONSISTENT
-#include "allocator_cc.h"
- #if HEAP_MM
-  #include "heap_mc.h"
- #else
-  #include "heap_cc.h"
- #endif
-#endif
+struct heap_mr;
+struct heap_rc;
+struct heap_mc;
+struct heap_cc;
+
+template <typename Data, typename Persister>
+	struct allocator_co;
+template <typename Data, typename AllocType, typename Persister>
+	struct allocator_rc;
+template <typename Data, typename AllocType, typename Persister>
+	struct allocator_cc;
+template <typename AllocType>
+    struct heap_access;
 
 template <typename Persister>
 	struct hstore_alloc_type

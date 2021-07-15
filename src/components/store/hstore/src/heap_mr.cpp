@@ -27,6 +27,7 @@
 #include <stdexcept> /* range_error */
 #include <string> /* to_string */
 
+
 /* When used with ADO, this space apparently needs a 2MiB alignment.
  * 4 KiB alignment sometimes produces a disagreement between server and ADO mappings,
  * which manifests as incorrect key and data values as seen on the ADO side.
@@ -34,6 +35,10 @@
 heap_mr::heap_mr(
 	unsigned debug_level_
 	, const string_view plugin_path_
+	, impl::allocation_state_emplace *
+	, impl::allocation_state_pin *
+	, impl::allocation_state_pin *
+	, impl::allocation_state_extend *
 	, byte_span pool0_full_
 	, byte_span pool0_heap_
 	, unsigned numa_node_
@@ -47,6 +52,8 @@ heap_mr::heap_mr(
 	, _more_region_uuids()
 	, _tracked_anchor(debug_level_, &_tracked_anchor, &_tracked_anchor, sizeof(_tracked_anchor), sizeof(_tracked_anchor))
 	, _eph(std::make_unique<heap_mr_ephemeral>(debug_level_, plugin_path_, id_, backing_file_))
+	, _pin_data(&heap_mr::pin_data_arm, &heap_mr::pin_data_disarm, &heap_mr::pin_data_get_cptr)
+	, _pin_key(&heap_mr::pin_key_arm, &heap_mr::pin_key_disarm, &heap_mr::pin_key_get_cptr)
 {
 	void *last = ::end(pool0_heap_);
 	if ( 0 < debug_level_ )
@@ -79,6 +86,10 @@ heap_mr::heap_mr(
     , const string_view backing_file_
 	, const byte_span *iov_addl_first_
 	, const byte_span *iov_addl_last_
+	, impl::allocation_state_emplace *
+	, impl::allocation_state_pin *
+	, impl::allocation_state_pin *
+	, impl::allocation_state_extend *
 )
 	: _pool0_full(this->_pool0_full)
 	, _pool0_heap(this->_pool0_heap)
@@ -87,6 +98,8 @@ heap_mr::heap_mr(
 	, _more_region_uuids(this->_more_region_uuids)
 	, _tracked_anchor(this->_tracked_anchor)
 	, _eph(std::make_unique<heap_mr_ephemeral>(debug_level_, plugin_path_, id_, backing_file_))
+	, _pin_data(&heap_mr::pin_data_arm, &heap_mr::pin_data_disarm, &heap_mr::pin_data_get_cptr)
+	, _pin_key(&heap_mr::pin_key_arm, &heap_mr::pin_key_disarm, &heap_mr::pin_key_get_cptr)
 {
 	_eph->add_managed_region(_pool0_full, _pool0_heap, _numa_node);
 	hop_hash_log<trace_heap_summary>::write(
@@ -397,7 +410,7 @@ void heap_mr::inject_allocation(const void * p, std::size_t sz_)
 	hop_hash_log<trace_heap>::write(LOG_LOCATION, "pool ", ::base(_pool0_heap), " addr ", p, " size ", sz);
 }
 
-void heap_mr::free(void *p_, std::size_t sz_, std::size_t alignment_)
+void heap_mr::free(void *&p_, std::size_t sz_, std::size_t alignment_)
 {
 	auto align = clean_align(alignment_, sizeof(void *));
 	sz_ = std::max(sz_, align);
@@ -408,12 +421,11 @@ void heap_mr::free(void *p_, std::size_t sz_, std::size_t alignment_)
 }
 
 void heap_mr::free_tracked(
-	void *p_
+	const void *p_
 	, std::size_t sz_
-	, std::size_t // align_
 )
 {
-	tracked_header *h = static_cast<tracked_header *>(p_)-1;
+	tracked_header *h = static_cast<tracked_header *>(const_cast<void *>(p_))-1;
 	auto align = h->_align;
 	/* size: a multiple of alignment */
 	auto sz = round_up(sz_ + align, align);
@@ -433,11 +445,11 @@ void heap_mr::free_tracked(
 	h->_prev->_next = h->_next; /* _next, must flush */
 	persister_nupm::persist(&h->_prev->_next, sizeof h->_prev->_next);
 
-	auto p = static_cast<char *>(p_) - h->_align;
+	auto p = static_cast<const char *>(p_) - h->_align;
 	assert(sz == h->_size);
 	VALGRIND_MEMPOOL_FREE(::base(_pool0_heap), p);
 	hop_hash_log<trace_heap>::write(LOG_LOCATION, "pool ", ::base(_pool0_heap), " addr ", p, " size ", sz);
-	return _eph->free(p, sz, _numa_node);
+	return _eph->free_tracked(p, sz, _numa_node);
 }
 
 unsigned heap_mr::percent_used() const
@@ -448,4 +460,44 @@ unsigned heap_mr::percent_used() const
 bool heap_mr::is_reconstituted(const void * p_) const
 {
 	return _eph->is_reconstituted(p_);
+}
+
+impl::allocation_state_pin *heap_mr::aspd() const
+{
+	throw std::logic_error(__func__ + std::string(" call without crash-consistent heap"));
+}
+
+impl::allocation_state_pin *heap_mr::aspk() const
+{
+	throw std::logic_error(__func__ + std::string(" call without crash-consistent heap"));
+}
+
+char *heap_mr::pin_data_get_cptr() const
+{
+	return nullptr;
+}
+
+char *heap_mr::pin_key_get_cptr() const
+{
+	return nullptr;
+}
+
+void heap_mr::pin_data_arm(
+	cptr & // cptr_
+) const
+{
+}
+
+void heap_mr::pin_key_arm(
+	cptr & // cptr_
+) const
+{
+}
+
+void heap_mr::pin_data_disarm() const
+{
+}
+
+void heap_mr::pin_key_disarm() const
+{
 }

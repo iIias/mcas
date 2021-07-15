@@ -18,11 +18,13 @@
 #include "hstore_config.h"
 
 #include "as_emplace.h"
+#include "as_pin.h"
 #include "cptr.h"
 #include "histogram_log2.h"
 #include "hop_hash_log.h"
 #include "persistent.h"
 #include "persister_nupm.h"
+#include "pin_control.h"
 #include "trace_flags.h"
 #include "valgrind_memcheck.h"
 
@@ -61,6 +63,15 @@ private:
 	std::size_t _more_region_uuids_size;
 	std::array<std::uint64_t, 1024U> _more_region_uuids;
 	std::unique_ptr<heap_mc_ephemeral> _eph;
+	pin_control<heap_mc> _pin_data;
+	pin_control<heap_mc> _pin_key;
+
+	void pin_data_arm(cptr &cptr) const;
+	void pin_key_arm(cptr &cptr) const;
+	char *pin_data_get_cptr() const;
+	char *pin_key_get_cptr() const;
+	void pin_data_disarm() const;
+	void pin_key_disarm() const;
 
 public:
 	explicit heap_mc(
@@ -109,25 +120,24 @@ public:
 
 	void alloc(persistent_t<void *> *p, std::size_t sz, std::size_t alignment);
 	void free(persistent_t<void *> *p, std::size_t sz);
+	void free_tracked(const void *p, std::size_t sz);
 
 	void emplace_arm() const;
 	void emplace_disarm() const;
 
-	impl::allocation_state_pin &aspd() const;
-	impl::allocation_state_pin &aspk() const;
-	void pin_data_arm(cptr &cptr) const;
-	void pin_key_arm(cptr &cptr) const;
-
-	char *pin_data_get_cptr() const;
-	char *pin_key_get_cptr() const;
-	void pin_data_disarm() const;
-	void pin_key_disarm() const;
+	impl::allocation_state_pin *aspd() const;
+	impl::allocation_state_pin *aspk() const;
 	void extend_arm() const;
 	void extend_disarm() const;
+
+	const pin_control<heap_mc> &pin_control_data() const { return _pin_data; }
+	const pin_control<heap_mc> &pin_control_key() const { return _pin_key; }
 
 	unsigned percent_used() const;
 
 	nupm::region_descriptor regions() const;
+
+	bool is_crash_consistent() const { return true; }
 };
 
 #endif

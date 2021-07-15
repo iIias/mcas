@@ -89,13 +89,26 @@ template <typename T, typename Heap, typename Persister = persister>
 			_pool->free(reinterpret_cast<persistent_t<void *> *>(&p_), sizeof(T) * sz_);
 		}
 
-		/* Deallocate a "tracked" allocation */
-		void deallocate_tracked(
+		void deallocate(
 			pointer_type & p_
+		)
+		{
+			/* What we might like to say, if persistent_t had the intelligence:
+			 * _pool->free(static_pointer_cast<void *>(&p));
+			 */
+			_pool->free(reinterpret_cast<persistent_t<void *> *>(&p_));
+		}
+
+		/* Deallocate a "tracked" allocation.
+		 * The crash-consistent allocator remembers allocations, so hstore does not
+		 * need to "track" them.
+		 */
+		void deallocate_tracked(
+			const void *p_
 			, size_type sz_
 		)
 		{
-			deallocate(p_, sz_);
+			_pool->free_tracked(p_, sz_);
 		}
 
 		void persist(const void *ptr, size_type len, const char * = nullptr) const

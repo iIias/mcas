@@ -134,6 +134,11 @@ bool heap_mc_shim::includes(
 	throw std::runtime_error("remaining not supported");
 }
 
+bool heap_mc_shim::is_crash_consistent() const
+{
+	return true;
+}
+
 heap_mc_ephemeral::heap_mc_ephemeral(
 	unsigned debug_level_
 	, impl::allocation_state_emplace *ase_
@@ -141,6 +146,7 @@ heap_mc_ephemeral::heap_mc_ephemeral(
 	, impl::allocation_state_pin *aspk_
 	, impl::allocation_state_extend *asx_
 	, std::unique_ptr<ccpm::IHeap_expandable> p_
+	, bool is_crash_consistent_
 	, string_view id_
 	, string_view backing_file_
 	, const std::vector<byte_span> rv_full_
@@ -148,6 +154,7 @@ heap_mc_ephemeral::heap_mc_ephemeral(
 )
 	: common::log_source(debug_level_)
 	, _heap(std::move(p_))
+	, _is_crash_consistent(is_crash_consistent_)
 	, _managed_regions((_heap->add_regions(ccpm::region_span(&*ccpm::region_vector_t(pool0_heap_).begin(), 1)), id_), backing_file_, rv_full_)
 	, _capacity(
 		::size(pool0_heap_)
@@ -211,6 +218,7 @@ heap_mc_ephemeral::heap_mc_ephemeral(
 			plugin_path_
 			, &p_cc
 		)
+		, true
 		, id_
 		, backing_file_
 		, rv_full_
@@ -219,7 +227,7 @@ heap_mc_ephemeral::heap_mc_ephemeral(
 {
 }
 
-/* crach-consistent reconstitute */
+/* crash-consistent reconstitute */
 heap_mc_ephemeral::heap_mc_ephemeral(
 	unsigned debug_level_
 	, common::string_view plugin_path_
@@ -242,6 +250,7 @@ heap_mc_ephemeral::heap_mc_ephemeral(
 			, ccpm::region_span(&*ccpm::region_vector_t(pool0_heap_).begin(), 1)
 			, ownership_callback_
 		)
+		, true
 		, id_
 		, backing_file_
 		, rv_full_
@@ -313,4 +322,18 @@ std::size_t heap_mc_ephemeral::free(persistent_t<void *> *p_, std::size_t sz_)
 #endif
 	_hist_free.enter(sz);
 	return sz;
+}
+
+void heap_mc_ephemeral::free_tracked(const void *p_, std::size_t sz_, unsigned)
+{
+	_heap->free(const_cast<void *&>(p_), sz_);
+#if 0
+	_allocated -= sz_;
+#endif
+	_hist_free.enter(sz_);
+}
+
+bool heap_mc_ephemeral::is_crash_consistent() const
+{
+	return _is_crash_consistent;
 }

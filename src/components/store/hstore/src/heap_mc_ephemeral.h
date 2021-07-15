@@ -72,6 +72,8 @@ public:
 	void add_regions(ccpm::region_span regions) override;
 
 	bool includes(const void *ptr) const override;
+
+	bool is_crash_consistent() const;
 };
 
 struct heap_mc_ephemeral
@@ -80,7 +82,10 @@ struct heap_mc_ephemeral
 private:
 	using byte_span = common::byte_span;
 	using string_view = common::string_view;
-	std::unique_ptr<ccpm::IHeap_expandable> _heap;
+	std::unique_ptr<
+		ccpm::IHeap_expandable
+	> _heap;
+	bool _is_crash_consistent;
 	nupm::region_descriptor _managed_regions;
 	std::size_t _capacity;
 #if 0 // MM does not support allocation query
@@ -107,6 +112,7 @@ private:
 		, impl::allocation_state_pin *aspk
 		, impl::allocation_state_extend *asx
 		, std::unique_ptr<ccpm::IHeap_expandable> p
+		, bool is_crash_sonsistent
 		, string_view id
 		, string_view backing_file
 		, const std::vector<byte_span> rv_full
@@ -172,9 +178,11 @@ public:
 		, ccpm::ownership_callback_t f
 	);
 	std::size_t free(persistent_t<void *> *p_, std::size_t sz_);
+	void free_tracked(const void *p, std::size_t sz, unsigned numa_node);
 	heap_mc_ephemeral(const heap_mc_ephemeral &) = delete;
 	heap_mc_ephemeral& operator=(const heap_mc_ephemeral &) = delete;
 	void add_managed_region(const byte_span r_full, const byte_span r_heap, unsigned numa_node);
+	bool is_crash_consistent() const;
 };
 
 #endif

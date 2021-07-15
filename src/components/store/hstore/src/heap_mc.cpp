@@ -19,6 +19,7 @@
 #include "clean_align.h"
 #include "dax_manager.h"
 #include "heap_mc_ephemeral.h"
+#include <common/env.h>
 #include <common/pointer_cast.h>
 #include <common/utils.h> /* round_up */
 #include <algorithm>
@@ -31,10 +32,7 @@
 
 namespace
 {
-#if HEAP_CONSISTENT
-	auto leak_check_str = std::getenv("LEAK_CHECK");
-	bool leak_check = bool(leak_check_str);
-#endif
+	bool leak_check = common::env_value<bool>("LEAK_CHECK", false);
 }
 
 namespace
@@ -103,7 +101,6 @@ heap_mc::heap_mc(
 	, const unsigned numa_node_
 	, const string_view id_
 	, const string_view backing_file_
-
 )
 	: _pool0_full(pool0_full_)
 	, _pool0_heap(pool0_heap_)
@@ -124,6 +121,8 @@ heap_mc::heap_mc(
 			, pool0_heap_
 		)
 	)
+	, _pin_data(&heap_mc::pin_data_arm, &heap_mc::pin_data_disarm, &heap_mc::pin_data_get_cptr)
+	, _pin_key(&heap_mc::pin_key_arm, &heap_mc::pin_key_disarm, &heap_mc::pin_key_get_cptr)
 {
 	/* cursor now locates the best-aligned region */
 	hop_hash_log<trace_heap_summary>::write(
@@ -188,6 +187,8 @@ heap_mc::heap_mc(
 			}
 		)
 	)
+	, _pin_data(&heap_mc::pin_data_arm, &heap_mc::pin_data_disarm, &heap_mc::pin_data_get_cptr)
+	, _pin_key(&heap_mc::pin_key_arm, &heap_mc::pin_key_disarm, &heap_mc::pin_key_get_cptr)
 {
 	hop_hash_log<trace_heap_summary>::write(
 		LOG_LOCATION
@@ -346,33 +347,36 @@ void heap_mc::alloc(persistent_t<void *> *p_, std::size_t sz_, std::size_t align
 	/* allocation must be multiple of alignment */
 	auto sz = (sz_ + align - 1U)/align * align;
 
-	try {
-#if HEAP_CONSISTENT
-		if ( _eph->_aspd->is_armed() )
+	try
+	{
+		if ( _eph->is_crash_consistent() )
 		{
-		}
-		else if ( _eph->_aspk->is_armed() )
-		{
-		}
-		/* Note: order of testing is important. An extend arm+allocate) can occur while
-		 * emplace is armed, but not vice-versa
-		 */
-		else if ( _eph->_asx->is_armed() )
-		{
-			_eph->_asx->record_allocation(&persistent_ref(*p_), persister_nupm());
-		}
-		else if ( _eph->_ase->is_armed() )
-		{
-			_eph->_ase->record_allocation(&persistent_ref(*p_), persister_nupm());
-		}
-		else
-		{
-			if ( leak_check )
+			if ( _eph->_aspd->is_armed() )
 			{
-				PLOG(PREFIX "leaky allocation, size %zu", LOCATION, sz_);
+			}
+			else if ( _eph->_aspk->is_armed() )
+			{
+			}
+			/* Note: order of testing is important. An extend arm+allocate) can occur while
+			 * emplace is armed, but not vice-versa
+			 */
+			else if ( _eph->_asx->is_armed() )
+			{
+				_eph->_asx->record_allocation(&persistent_ref(*p_), persister_nupm());
+			}
+			else if ( _eph->_ase->is_armed() )
+			{
+				_eph->_ase->record_allocation(&persistent_ref(*p_), persister_nupm());
+			}
+			else
+			{
+				if ( leak_check )
+				{
+					PLOG(PREFIX "leaky allocation, size %zu", LOCATION, sz_);
+				}
 			}
 		}
-#endif
+
 		/* IHeap interface does not support abstract pointers. Cast to regular pointer */
 		_eph->_heap->allocate(*reinterpret_cast<void **>(p_), sz, align);
 		/* We would like to carry the persistent_t through to the crash-conssitent allocator,
@@ -403,6 +407,16 @@ void heap_mc::free(persistent_t<void *> *p_, std::size_t sz_)
 	hop_hash_log<trace_heap>::write(LOG_LOCATION, "pool ", ::base(_pool0_heap), " addr ", p_, " size ", sz_, "->", sz);
 }
 
+void heap_mc::free_tracked(
+	const void * p_
+	, std::size_t sz_
+)
+{
+	VALGRIND_MEMPOOL_FREE(::base(_pool0_heap), p_);
+	hop_hash_log<trace_heap>::write(LOG_LOCATION, "pool ", ::base(_pool0_heap), " addr ", p_, " size ", sz_);
+	return _eph->free_tracked(p_, sz_, _numa_node);
+}
+
 unsigned heap_mc::percent_used() const
 {
 	return
@@ -431,48 +445,46 @@ void heap_mc::extend_disarm() const
 void heap_mc::emplace_arm() const { _eph->_ase->arm(persister_nupm()); }
 void heap_mc::emplace_disarm() const { _eph->_ase->disarm(persister_nupm()); }
 
-impl::allocation_state_pin &heap_mc::aspd() const { return *_eph->_aspd; }
-impl::allocation_state_pin &heap_mc::aspk() const { return *_eph->_aspk; }
+impl::allocation_state_pin *heap_mc::aspd() const { return _eph->_aspd; }
+impl::allocation_state_pin *heap_mc::aspk() const { return _eph->_aspk; }
 
 void heap_mc::pin_data_arm(
 	cptr &cptr_
 ) const
 {
-#if HEAP_CONSISTENT
-	_eph->_aspd->arm(cptr_, persister_nupm());
-#else
-	(void)cptr_;
-#endif
+	if ( _eph->is_crash_consistent() )
+	{
+		_eph->_aspd->arm(cptr_, persister_nupm());
+	}
 }
 
 void heap_mc::pin_key_arm(
 	cptr &cptr_
 ) const
 {
-#if HEAP_CONSISTENT
-	_eph->_aspk->arm(cptr_, persister_nupm());
-#else
-	(void)cptr_;
-#endif
+	if ( _eph->is_crash_consistent() )
+	{
+		_eph->_aspk->arm(cptr_, persister_nupm());
+	}
 }
 
 char *heap_mc::pin_data_get_cptr() const
 {
-#if HEAP_CONSISTENT
-	assert(_eph->_aspd->is_armed());
-	return _eph->_aspd->get_cptr();
-#else
-	return nullptr;
-#endif
+	assert( ! _eph->is_crash_consistent() || _eph->_aspd->is_armed());
+	return
+		_eph->is_crash_consistent()
+		? _eph->_aspd->get_cptr()
+		: nullptr
+		;
 }
 char *heap_mc::pin_key_get_cptr() const
 {
-#if HEAP_CONSISTENT
-	assert(_eph->_aspk->is_armed());
-	return _eph->_aspk->get_cptr();
-#else
-	return nullptr;
-#endif
+	assert( ! _eph->is_crash_consistent() || _eph->_aspk->is_armed());
+	return
+		_eph->is_crash_consistent()
+		? _eph->_aspk->get_cptr()
+		: nullptr
+		;
 }
 
 void heap_mc::pin_data_disarm() const

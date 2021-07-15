@@ -167,21 +167,26 @@ template <typename Region, typename Table, typename Allocator, typename LockType
           , rac_.data_file() // backing file
         )
       );
-      return std::make_unique<session<open_pool_handle, allocator_t, table_t, lock_type_t>>(AK_REF std::move(h), construction_mode::create);
-    }
-    catch ( const General_exception &e )
-    {
-      throw pool_error(std::string("create_region 2a fail: ") + e.cause(), pool_ec::region_fail_general_exception);
-    }
-    catch ( const std::bad_alloc& e)
-    {
-      throw pool_error("create_region fail 2b (bad alloc): ", pool_ec::region_fail_general_exception);
-    }
-    catch ( const API_exception &e )
-    {
-      throw pool_error(std::string("create_region fail: ") + e.cause(), pool_ec::region_fail_api_exception);
-    }
-  }
+			return std::make_unique<session<open_pool_handle, allocator_t, table_t, lock_type_t>>(
+				AK_REF
+				this->debug_level()
+				, std::move(h)
+				, construction_mode::create
+			);
+		}
+		catch ( const General_exception &e )
+		{
+			throw pool_error(std::string("create_region 2a fail: ") + e.cause(), pool_ec::region_fail_general_exception);
+		}
+		catch ( const std::bad_alloc& e)
+		{
+			throw pool_error("create_region fail 2b (bad alloc): ", pool_ec::region_fail_general_exception);
+		}
+		catch ( const API_exception &e )
+		{
+			throw pool_error(std::string("create_region fail: ") + e.cause(), pool_ec::region_fail_api_exception);
+		}
+	  }
 
   template <typename Region, typename Table, typename Allocator, typename LockType>
   auto hstore_nupm<Region, Table, Allocator, LockType>::pool_open_1(
@@ -232,13 +237,15 @@ template <typename Region, typename Table, typename Allocator, typename LockType
     PLOG(PREFIX "in open_2 region at %p", LOCATION, ra_.address_map().front().iov_base);
 #endif
     /* open_pool_handle is a managed region * */
-    auto s =
-      std::make_unique<session<open_pool_handle, allocator_t, table_t, lock_type_t>>(
-        AK_REF std::move(h)
-        , construction_mode::reconstitute
-      );
-    return s;
-  }
+		auto s =
+			std::make_unique<session<open_pool_handle, allocator_t, table_t, lock_type_t>>(
+				AK_REF
+	            this->debug_level()
+				, std::move(h)
+				, construction_mode::reconstitute
+			);
+		return s;
+	}
 
 template <typename Region, typename Table, typename Allocator, typename LockType>
   void hstore_nupm<Region, Table, Allocator, LockType>::pool_close_check(const string_view)

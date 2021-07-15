@@ -59,11 +59,12 @@ template <typename T, typename Heap, typename Persister = persister>
 
 		allocator_cc &operator=(const allocator_cc &a_) = delete;
 
-		void arm_extend()
+		void extend_arm()
 		{
 			this->pool()->extend_arm();
 		}
-		void disarm_extend()
+
+		void extend_disarm()
 		{
 			this->pool()->extend_disarm();
 		}

@@ -13,6 +13,7 @@
 
 #include "hstore_config.h"
 #include "alloc_key.h" /* AK_ACTUAL */
+#include "monitor_extend.h"
 #include <common/logging.h>
 
 /*
@@ -200,9 +201,8 @@ template <typename Allocator>
 		persistent_t<typename std::allocator_traits<bucket_allocator_t>::pointer> ptr = nullptr;
 
 		{
-#if HEAP_CONSISTENT
 			monitor_extend<Allocator> m(bucket_allocator_t{*this});
-#endif
+
 			bucket_allocator_t(*this).allocate(
 				AK_REF
 				ptr

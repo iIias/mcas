@@ -23,6 +23,7 @@
 #include "persistent.h"
 
 #include <cstddef> /* size_t, ptrdiff_t */
+#include <stdexcept> /* logic_error */
 
 template <typename T, typename Heap, typename Persister>
 	struct allocator_rc;
@@ -64,6 +65,19 @@ template <typename T, typename Heap, typename Persister = persister>
 			{}
 
 		allocator_rc &operator=(const allocator_rc &a_) = delete;
+
+		/* Note: although the probably should not be called, arm and disarm ought to
+		 * be safe as no-ops.
+		 */
+		void extend_arm()
+		{
+			throw std::logic_error(__func__ + std::string(" call without crash-consistent heap"));
+		}
+
+		void extend_disarm()
+		{
+			throw std::logic_error(__func__ + std::string(" call without crash-consistent heap"));
+		}
 
 		auto allocate(
 			AK_ACTUAL

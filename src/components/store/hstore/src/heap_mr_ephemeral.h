@@ -142,7 +142,8 @@ public:
 	void inject_allocation(void *p, std::size_t sz, unsigned numa_node) override;
 	void *allocate(std::size_t sz, unsigned numa_node, std::size_t alignment);
 	void *allocate_tracked(std::size_t sz, unsigned numa_node, std::size_t alignment);
-	void free(void *p, std::size_t sz, unsigned numa_node);
+	void free(void *&p, std::size_t sz, unsigned numa_node);
+	void free_tracked(const void *p, std::size_t sz, unsigned numa_node);
 	bool is_reconstituted(const void *p) const;
 	using common::log_source::debug_level;
 };
