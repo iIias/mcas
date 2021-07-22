@@ -320,7 +320,7 @@ static void hook_extents(unsigned arena_id)
 }
 
 
-PUBLIC status_t mm_plugin_create(void *persister, const void *regions, void *callee_owned, const char * params, void * root, mm_plugin_heap_t * out_heap)
+PUBLIC status_t mm_plugin_create(const char * params, void * root, mm_plugin_heap_t * out_heap)
 {
   PPLOG("mm_plugin_create (%s)", params);
 
@@ -482,11 +482,6 @@ PUBLIC int mm_plugin_can_inject_allocation(mm_plugin_heap_t heap)
 PUBLIC void mm_plugin_debug(mm_plugin_heap_t heap)
 {
   jel_malloc_stats_print(nullptr,nullptr,nullptr);
-}
-
-PUBLIC  status_t mm_plugin_reconstitute(mm_plugin_heap_t heap, void *regions, void *callee_owns, int force_init)
-{
-  return E_NOT_IMPL;
 }
 
 
