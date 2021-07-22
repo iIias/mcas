@@ -23,7 +23,7 @@
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 #pragma GCC diagnostic ignored "-Wunused-function"
 
-#define LOG_TO_FILE
+//#define LOG_TO_FILE
 
 #define LOAD_SYMBOL(X) __mm_funcs.X = reinterpret_cast<typeof(__mm_funcs.X)>(dlsym(__mm_plugin_module, # X)); assert(__mm_funcs.X)
 
@@ -127,7 +127,10 @@ static void __init_components(void)
   LOAD_SYMBOL(mm_plugin_destroy);
 
   __mm_funcs.mm_plugin_init();  
-  __mm_funcs.mm_plugin_create(nullptr, /* config */
+  __mm_funcs.mm_plugin_create(nullptr, /* persister */
+                              nullptr, /* regions */
+                              nullptr, /* callee_owned */
+                              nullptr, /* config */
                               nullptr, /* root pointer */
                               &__mm_heap);
 
@@ -135,14 +138,16 @@ static void __init_components(void)
   size_t slab_size = size_to_allocate();
   globals::slab_memory = mmap(reinterpret_cast<void*>(0xAA00000000),
                               slab_size,
-                              PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS,
+                              PROT_READ | PROT_WRITE, MAP_SHARED | MAP_ANONYMOUS,
                               -1, 0);
 
   __mm_funcs.mm_plugin_add_managed_region(__mm_heap,
                                           globals::slab_memory,
                                           slab_size);
 
+#ifdef LOG_TO_FILE
   globals::log = new Logger();
+#endif
   
   globals::intercept_active = true;
 }

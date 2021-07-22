@@ -192,26 +192,12 @@ target_link_libraries(${PROJECT_NAME}-cc-pe-tr common pthread numa dl rt boost_s
 add_dependencies(${PROJECT_NAME}-cc-pe-tr common nupm)
 set_target_properties(${PROJECT_NAME}-cc-pe-tr PROPERTIES INSTALL_RPATH ${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}:${CMAKE_INSTALL_PREFIX}/lib)
 
-# crash-consistent, pluggable allocator (ccpm)
-#add_library(${PROJECT_NAME}-mc SHARED ${SOURCES} ${SOURCES_MC})
-#target_compile_definitions(${PROJECT_NAME}-mc PUBLIC "$<$<BOOL:${TEST_HSTORE_PERISHABLE}>:MCAS_HSTORE_TEST_PERISHABLE=1>" "MCAS_HSTORE_USE_CC_HEAP=5")
-#target_link_libraries(${PROJECT_NAME}-mc common pthread numa dl rt boost_system boost_filesystem tbb nupm cityhash)
-#add_dependencies(${PROJECT_NAME}-mc common nupm)
-#set_target_properties(${PROJECT_NAME}-mc PROPERTIES INSTALL_RPATH ${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}:${CMAKE_INSTALL_PREFIX}/lib)
-
 # crash-consistent, pluggable allocator (ccpm), perishable version
 add_library(${PROJECT_NAME}-mm-pe SHARED ${SOURCES} ${SOURCES_MM})
 target_compile_definitions(${PROJECT_NAME}-mm-pe PUBLIC "$<$<BOOL:${TEST_HSTORE_PERISHABLE}>:MCAS_HSTORE_TEST_PERISHABLE=1>" "MCAS_HSTORE_USE_CC_HEAP=7")
 target_link_libraries(${PROJECT_NAME}-mm-pe common pthread numa dl rt boost_system boost_filesystem tbb nupm cityhash)
 add_dependencies(${PROJECT_NAME}-mm-pe common nupm)
 set_target_properties(${PROJECT_NAME}-mm-pe PROPERTIES INSTALL_RPATH ${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}:${CMAKE_INSTALL_PREFIX}/lib)
-
-# pluggable allocator (rcalb) version
-# add_library(${PROJECT_NAME}-mr SHARED ${SOURCES} ${SOURCES_MR})
-#target_compile_definitions(${PROJECT_NAME}-mr PUBLIC "$<$<BOOL:${TEST_HSTORE_PERISHABLE}>:MCAS_HSTORE_TEST_PERISHABLE=1>" "MCAS_HSTORE_USE_CC_HEAP=6")
-#target_link_libraries(${PROJECT_NAME}-mr common pthread numa dl rt boost_system boost_filesystem tbb nupm cityhash)
-#add_dependencies(${PROJECT_NAME}-mr common nupm)
-#set_target_properties(${PROJECT_NAME}-mr PROPERTIES INSTALL_RPATH ${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}:${CMAKE_INSTALL_PREFIX}/lib)
 
 # generic (crash-consistent (ccpm), or reconstituting (rcalb) pluggable allocator version
 add_library(${PROJECT_NAME}-mm SHARED ${SOURCES} src/heap_mm.cpp ${SOURCES_MM})
@@ -227,5 +213,3 @@ install(TARGETS ${PROJECT_NAME}-cc-pe LIBRARY DESTINATION lib)
 install(TARGETS ${PROJECT_NAME}-cc-pe-tr LIBRARY DESTINATION lib)
 install(TARGETS ${PROJECT_NAME}-mm LIBRARY DESTINATION lib)
 install(TARGETS ${PROJECT_NAME}-mm-pe LIBRARY DESTINATION lib)
-#install(TARGETS ${PROJECT_NAME}-mr LIBRARY DESTINATION lib)
-#install(TARGETS ${PROJECT_NAME}-mm LIBRARY DESTINATION lib)

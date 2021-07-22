@@ -116,11 +116,6 @@ hstore::hstore(
   , _pools_mutex{}
   , _pools{}
 {
-#if HEAP_MM
-std::cerr << "PLUGIN PATH " << mm_plugin_path_ << " heap mode " << USE_CC_HEAP << "\n";
-#else
-std::cerr << "NO PLUGIN PATH, heap mode " << USE_CC_HEAP << "\n";
-#endif
 }
 
 hstore::~hstore()

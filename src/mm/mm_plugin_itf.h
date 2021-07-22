@@ -23,6 +23,9 @@
 
 #if defined(__cplusplus)
 #pragma GCC diagnostic ignored "-Weffc++"
+#include <common/byte_span.h>
+#include <gsl/span>
+#include <functional>
 #endif
 
 #include <stdlib.h>
@@ -54,7 +57,12 @@ extern "C"
    * 
    * @return S_OK, E_FAIL
    */
-  status_t mm_plugin_create(const char * params,
+  status_t mm_plugin_create(
+			void *persister /* actual type: ccpm::persister * */
+			, const void *regions /* actual type: const gsl::span<common::byte_span> * */
+			, void *callee_owns /* actual type: std::function<bool(const void *)> * */
+			,
+                             const char * params,
                             void * root_ptr,
                             mm_plugin_heap_t * out_heap);
 
@@ -228,6 +236,21 @@ extern "C"
   status_t mm_plugin_inject_allocation(mm_plugin_heap_t heap, void * ptr, size_t size);
 
   /** 
+   * Reconsitute regions from a crash-consistent allocator
+   * 
+   * @param heap Heap context
+   * @param regions Span of regions to reconstitute
+   * @param callee_owns Functoor which returns "true" if the callee owns the obejct at the specified address
+   * @param force_init
+   * 
+   * @return S_OK, E_NOT_IMPL
+   */
+  status_t mm_plugin_reconstitute(mm_plugin_heap_t heap
+		, void *regions /* actual type: gsl::span<common::byte_span> * */
+		, void *callee_owns /* actual type: decltype(std::function<bool(const void *)> * */
+		, int force_init);
+
+  /** 
    * Get debugging information
    * 
    * @param heap Heap context
@@ -255,7 +278,13 @@ extern "C"
   typedef struct tag_mm_plugin_function_table_t
   {
     status_t (*mm_plugin_init)();
-    status_t (*mm_plugin_create)(const char * params, void * root_ptr, mm_plugin_heap_t * out_heap);
+    status_t (*mm_plugin_create)(
+			void *persister /* actual type: ccpm::persister * */
+			, const void *regions /* actual type: gsl::span<common::byte_span> * */
+			, void *callee_owns /* actual type: std::function<bool(const void *)> * */
+			,
+                                 const char * params, void * root_ptr
+			, mm_plugin_heap_t * out_heap);
     status_t (*mm_plugin_destroy)(mm_plugin_heap_t heap);
     status_t (*mm_plugin_add_managed_region)(mm_plugin_heap_t heap,
                                              void * region_base,
@@ -304,6 +333,10 @@ class MM_plugin_wrapper
 public:
     
   MM_plugin_wrapper(const std::string& plugin_path,
+			void *persister /* actual type: ccpm::persister * */
+			, void *regions /* actual type: gsl::span<common::byte_span> * */
+			, void *callee_owns /* actual type: std::function<bool(const void *)> * */
+			,
                     const std::string& config = "",
                     void * root_ptr = nullptr)
   {
@@ -337,8 +370,12 @@ public:
     //      dlclose(_module);
       
     /* create heap instance */      
-    _ft.mm_plugin_create(config.c_str(), root_ptr, &_heap);
+    _ft.mm_plugin_create(persister, regions, callee_owns, config.c_str(), root_ptr, &_heap);
   }
+    
+  MM_plugin_wrapper(const std::string& plugin_path,
+                    const std::string& config = "",
+                    void * root_ptr = nullptr) : MM_plugin_wrapper(plugin_path, nullptr, nullptr, nullptr, config, root_ptr) {}
 
   virtual ~MM_plugin_wrapper() noexcept {
     if ( _heap )

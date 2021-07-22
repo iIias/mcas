@@ -22,16 +22,15 @@
 #include <common/utils.h>
 #include <jemalloc/jemalloc.h>
 
-#include "avl_malloc.h"
-#include "logging.h"
-
-#include "../../mm_plugin_itf.h"
-
 //#define DEBUG_EXTENTS
 //#define DEBUG_ALLOCS
 //#define DEBUG
 #define USE_AVL
 
+#include "avl_malloc.h"
+#include "logging.h"
+
+#include "../../mm_plugin_itf.h"
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-value"
@@ -321,7 +320,7 @@ static void hook_extents(unsigned arena_id)
 }
 
 
-PUBLIC status_t mm_plugin_create(const char * params, void * root, mm_plugin_heap_t * out_heap)
+PUBLIC status_t mm_plugin_create(void *persister, const void *regions, void *callee_owned, const char * params, void * root, mm_plugin_heap_t * out_heap)
 {
   PPLOG("mm_plugin_create (%s)", params);
 
@@ -444,10 +443,6 @@ PUBLIC status_t mm_plugin_callocate(mm_plugin_heap_t heap, size_t n, void ** out
 
 PUBLIC status_t mm_plugin_reallocate(mm_plugin_heap_t heap, void ** in_out_ptr, size_t n)
 {
-#ifdef DEBUG_ALLOCS
-  PPLOG("%s (%p, %lu) x_flags=%x",__func__, *ptr, n, CAST_HEAP(heap)->x_flags());
-#endif
-  
   if(*in_out_ptr == nullptr) {
     /* if pointer is null, then we just do a new allocation */
     *in_out_ptr = jel_mallocx(n, CAST_HEAP(heap)->x_flags());
@@ -458,6 +453,11 @@ PUBLIC status_t mm_plugin_reallocate(mm_plugin_heap_t heap, void ** in_out_ptr, 
   else {
     *in_out_ptr = jel_rallocx(*in_out_ptr, n, CAST_HEAP(heap)->x_flags());
   }
+
+#ifdef DEBUG_ALLOCS
+  PPLOG("%s (%p, %lu) x_flags=%x",__func__, *in_out_ptr, n, CAST_HEAP(heap)->x_flags());
+#endif
+  
 
   return S_OK;
 }
@@ -483,6 +483,12 @@ PUBLIC void mm_plugin_debug(mm_plugin_heap_t heap)
 {
   jel_malloc_stats_print(nullptr,nullptr,nullptr);
 }
+
+PUBLIC  status_t mm_plugin_reconstitute(mm_plugin_heap_t heap, void *regions, void *callee_owns, int force_init)
+{
+  return E_NOT_IMPL;
+}
+
 
 
 #pragma GCC diagnostic pop

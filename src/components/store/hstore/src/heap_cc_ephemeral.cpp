@@ -40,6 +40,8 @@ namespace
 	persister p_cc{};
 }
 
+/* initial cosntruction */
+
 heap_cc_ephemeral::heap_cc_ephemeral(
 	unsigned debug_level_
 	, impl::allocation_state_emplace *ase_
