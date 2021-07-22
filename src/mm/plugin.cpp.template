@@ -105,12 +105,12 @@ status_t mm_plugin_inject_allocation(mm_plugin_heap_t heap, void * ptr, size_t s
   return E_NOT_IMPL;
 }
 
-status_t mm_plugin_is_crash_consistent(mm_plugin_heap_t heap)
+int mm_plugin_is_crash_consistent(mm_plugin_heap_t heap)
 {
   return false;
 }
 
-status_t mm_plugin_can_inject_allocation(mm_plugin_heap_t heap)
+int mm_plugin_can_inject_allocation(mm_plugin_heap_t heap)
 {
   return false;
 }
