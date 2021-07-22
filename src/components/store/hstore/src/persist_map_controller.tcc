@@ -38,10 +38,7 @@ template <typename Allocator>
         AK_ACTUAL
 		const Allocator &av_
 		, persist_data_t *persist_
-		, construction_mode
-#if HEAP_RECONSTITUTE
-			mode_
-#endif
+		, construction_mode mode_
 	)
 		: Allocator(av_)
 		, _persist(persist_)
@@ -55,12 +52,10 @@ template <typename Allocator>
 		{
 			_persist->do_initial_allocation(AK_REF this);
 		}
-#if HEAP_RECONSTITUTE
-		if ( mode_ == construction_mode::reconstitute )
+		if ( mode_ == construction_mode::reconstitute && av_.pool()->can_reconstitute() )
 		{
 			_persist->reconstitute(av_);
 		}
-#endif
 	}
 
 template <typename Allocator>

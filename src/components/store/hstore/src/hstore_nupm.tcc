@@ -87,17 +87,23 @@ template <typename Region, typename Table, typename Allocator, typename LockType
   {
     auto size = size_;
 
-#if HEAP_RECONSTITUTE
-    /* The first part of pool space is the header, which is described by a Region.
-     * In order to give the heap a well-aligned space, the size actually allocated
-     * to a heap may be as little as 3/4 of the area provided to the heap.
-     * The constant 3/4 is embedded in the heap_rc class.
-     *
-     * Ask for enough space to contain the header and to compensate for inefficiency
-     * due to heap alignment.
-     */
-    size = sizeof(region_type) + size_ * 4 / 3;
-#endif
+	/*
+	 * In order to give the heap a well-aligned space, the size actually allocated
+	 * to a heap may be as little as 3/4 of the area provided to the heap.
+	 * The constant 3/4 is embedded in the heap_rc class.
+	 *
+	 * Ask for enough space to contain the header and to compensate for inefficiency
+	 * due to heap alignment.
+	 *
+	 * The additional size is not needed by the ccpm allocator, but we will not know
+	 * the allocator type until pool_create_2.
+	 */
+	size = size_ * 4 / 3;
+
+	/*
+	 * The first part of pool space is the header, which is a region_type.
+	 */
+	size += sizeof(region_type);
 
 #if defined HSTORE_LOG_GRAIN_SIZE
     /* _dax_manager will allocate a region of some granularity But there is no mechanism for it to

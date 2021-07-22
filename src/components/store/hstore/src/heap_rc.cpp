@@ -27,6 +27,20 @@
 #include <stdexcept> /* range_error */
 #include <string> /* to_string */
 
+namespace
+{
+	using byte_span = common::byte_span;
+	auto open_region(const std::unique_ptr<dax_manager> &dax_manager_, std::uint64_t uuid_, unsigned numa_node_) -> byte_span
+	{
+		auto & iovs = dax_manager_->open_region(std::to_string(uuid_), numa_node_).address_map();
+		if ( iovs.size() != 1 )
+		{
+			throw std::range_error("failed to re-open region " + std::to_string(uuid_));
+		}
+		return iovs.front();
+	}
+}
+
 /* When used with ADO, this space apparently needs a 2MiB alignment.
  * 4 KiB alignment sometimes produces a disagreement between server and ADO mappings,
  * which manifests as incorrect key and data values as seen on the ADO side.
@@ -120,23 +134,13 @@ heap_rc::heap_rc(
 		VALGRIND_MAKE_MEM_DEFINED(::base(r), ::size(r));
 		VALGRIND_CREATE_MEMPOOL(::base(r), 0, true);
 	}
-	_tracked_anchor.recover(debug_level_, _eph.get(), _numa_node);
+	_tracked_anchor.recover(debug_level_, _eph.get());
 }
 #pragma GCC diagnostic pop
 
 heap_rc::~heap_rc()
 {
 	quiesce();
-}
-
-auto heap_rc::open_region(const std::unique_ptr<dax_manager> &dax_manager_, std::uint64_t uuid_, unsigned numa_node_) -> byte_span
-{
-	auto & iovs = dax_manager_->open_region(std::to_string(uuid_), numa_node_).address_map();
-	if ( iovs.size() != 1 )
-	{
-		throw std::range_error("failed to re-open region " + std::to_string(uuid_));
-	}
-	return iovs.front();
 }
 
 auto heap_rc::regions() const -> nupm::region_descriptor
@@ -154,7 +158,7 @@ namespace
 				v.begin()
 				, v.end()
 				, std::size_t(0)
-				, [] (std::size_t s, const byte_span &iov) -> std::size_t
+				, [] (std::size_t s, byte_span iov) -> std::size_t
 					{
 						return s + ::size(iov);
 					}
@@ -289,7 +293,7 @@ namespace
 	}
 }
 
-void *heap_rc::alloc(const std::size_t sz_, const std::size_t align_)
+void heap_rc::alloc(persistent_t<void *> &p_, std::size_t sz_, std::size_t align_)
 {
 	auto align = clean_align(align_, sizeof(void *));
 
@@ -311,14 +315,13 @@ void *heap_rc::alloc(const std::size_t sz_, const std::size_t align_)
 	sz = (sz + align - 1U)/align * align;
 
 	try {
-		auto p = _eph->allocate(sz, _numa_node, align);
+		_eph->allocate(p_, sz, _numa_node, align);
 		/* Note: allocation exception from Rca_LB is General_exception, which does not derive
 		 * from std::bad_alloc.
 		 */
 
-		VALGRIND_MEMPOOL_ALLOC(::base(_pool0_heap), p, sz);
-		hop_hash_log<trace_heap>::write(LOG_LOCATION, "pool ", ::base(_pool0_full), " addr ", p, " align ", align_, " -> ", align, " size ", sz_, " -> ", sz);
-		return p;
+		VALGRIND_MEMPOOL_ALLOC(::base(_pool0_heap), p_, sz);
+		hop_hash_log<trace_heap>::write(LOG_LOCATION, "pool ", ::base(_pool0_full), " addr ", p_, " align ", align_, " -> ", align, " size ", sz_, " -> ", sz);
 	}
 	catch ( const std::bad_alloc & )
 	{
@@ -348,7 +351,8 @@ void *heap_rc::alloc_tracked(const std::size_t sz_, const std::size_t align_)
 	auto sz = round_up(sz_ + align, align);
 
 	try {
-		auto p = _eph->allocate(sz, _numa_node, align);
+		void *p = nullptr;
+		_eph->allocate(p, sz, _numa_node, align);
 		/* Note: allocation exception from Rca_LB is General_exception, which does not derive
 		 * from std::bad_alloc.
 		 */
@@ -401,16 +405,14 @@ void heap_rc::inject_allocation(const void * p, std::size_t sz_)
 	sz_ = std::max(sz_, alignment);
 	auto sz = (sz_ + alignment - 1U)/alignment * alignment;
 	/* NOTE: inject_allocation should take a const void* */
-	_eph->inject_allocation(const_cast<void *>(p), sz, _numa_node);
+	_eph->inject_allocation(const_cast<void *>(p), sz);
 	VALGRIND_MEMPOOL_ALLOC(::base(_pool0_heap), p, sz);
 	hop_hash_log<trace_heap>::write(LOG_LOCATION, "pool ", ::base(_pool0_heap), " addr ", p, " size ", sz);
 }
 
-std::size_t heap_rc::free(persistent_t<void *> &p_, std::size_t sz_, std::size_t alignment_)
+std::size_t heap_rc::free(persistent_t<void *> &p_, std::size_t sz_)
 {
-	auto align = clean_align(alignment_, sizeof(void *));
-	sz_ = std::max(sz_, align);
-	auto sz = (sz_ + align - 1U)/align * align;
+	auto sz = std::max(sz_, sizeof(void *));
 	VALGRIND_MEMPOOL_FREE(::base(_pool0_heap), p_);
 	hop_hash_log<trace_heap>::write(LOG_LOCATION, "pool ", ::base(_pool0_heap), " addr ", p_, " size ", sz);
 	return _eph->free(p_, sz, _numa_node);

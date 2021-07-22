@@ -109,7 +109,7 @@ template <typename Allocator>
 				auto segment_size = base_segment_size<<(ix-1U);
 
 				monitor_extend<Allocator> m{bucket_allocator_t(av)};
-				if ( HEAP_CONSISTENT )
+				if ( pc_->pool()->is_crash_consistent() )
 				{
 					pc_->record_segment_count_addr_and_target_value(&_segment_count, _segment_count.actual().value() + 1);
 				}
@@ -133,39 +133,17 @@ template <typename Allocator>
 template <typename Allocator>
 	void impl::persist_map<Allocator>::reconstitute(Allocator av_)
 	{
-#if HEAP_RECONSTITUTE
-		auto av = bucket_allocator_t(av_);
-		if ( ! _segment_count.actual().is_stable() || _segment_count.actual().value() != 0 )
-		{
-			segment_layout::six_t ix = 0U;
-			av.reconstitute(base_segment_size, _sc[ix].bp);
-			++ix;
-
-			/* restore segments beyond the first */
-			for ( ; ix != _segment_count.actual().value_not_stable(); ++ix )
-			{
-				auto segment_size = base_segment_size<<(ix-1U);
-				av.reconstitute(segment_size, _sc[ix].bp);
-			}
-			if ( ! _segment_count.actual().is_stable() )
-			{
-				/* restore the last, "junior" segment */
-				auto segment_size = base_segment_size<<(ix-1U);
-				av.reconstitute(segment_size, _sc[ix].bp);
-			}
-
-		}
-#endif
 		/*
-		 * Note: persist_map<Allocator>::reconstitute(Allocator is not called
-		 * if HEAP_CONSISTENT, so this code is not yet exercised.
+		 * Note: persist_map<Allocator>::reconstitute(Allocator) is not called
+		 * if is_crash_consistent, so this code is not yet exercised.
 		 */
-		if ( HEAP_CONSISTENT )
+		if ( av_.pool()->is_crash_consistent() )
 		{
 			/* */
 			/* manifest constant 4 is number of possible emplace/erase deallocations (though 2 is the maximum expected) */
 			for ( auto i = 0; i != 4; ++i )
 			{
+#if ! TEST_HSTORE_PERISHABLE // compile error when testing perishable
 				if ( auto p = static_cast<typename Allocator::pointer_type>(ase()->er_disused_ptr(i)) )
 				{
 					PLOG(PREFIX "possibly incomplete deallocation at %p", LOCATION, static_cast<void *>(p));
@@ -174,6 +152,7 @@ template <typename Allocator>
 					av_.deallocate(p);
 #endif
 				}
+#endif
 			}
 			/* emplace can be disarmed now. */
 			av_.emplace_disarm();
@@ -182,5 +161,28 @@ template <typename Allocator>
 			 * so disarm it here.
 			 */
 			av_.extend_disarm();
+		}
+		else if ( av_.pool()->can_reconstitute() )
+		{
+			auto av = bucket_allocator_t(av_);
+			if ( ! _segment_count.actual().is_stable() || _segment_count.actual().value() != 0 )
+			{
+				segment_layout::six_t ix = 0U;
+				av.reconstitute(base_segment_size, _sc[ix].bp);
+				++ix;
+	
+				/* restore segments beyond the first */
+				for ( ; ix != _segment_count.actual().value_not_stable(); ++ix )
+				{
+					auto segment_size = base_segment_size<<(ix-1U);
+					av.reconstitute(segment_size, _sc[ix].bp);
+				}
+				if ( ! _segment_count.actual().is_stable() )
+				{
+					/* restore the last, "junior" segment */
+					auto segment_size = base_segment_size<<(ix-1U);
+					av.reconstitute(segment_size, _sc[ix].bp);
+				}
+			}
 		}
 	}

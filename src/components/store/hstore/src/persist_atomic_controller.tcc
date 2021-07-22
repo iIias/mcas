@@ -39,9 +39,8 @@ template <typename Table>
 			, _tick_expired(false)
 #endif
 		{
-			if ( mode_ == construction_mode::reconstitute )
+			if ( mode_ == construction_mode::reconstitute && al_.pool()->can_reconstitute() )
 			{
-#if HEAP_RECONSTITUTE
 				/* reconstitute allocated memory */
 				_persist->mod_key.reconstitute(allocator_type(*this));
 				_persist->mod_mapped.reconstitute(allocator_type(*this));
@@ -52,7 +51,6 @@ template <typename Table>
 				else
 				{
 				}
-#endif
 			}
 			try
 			{
@@ -93,7 +91,7 @@ template <typename Table>
 		monitor_emplace<allocator_type> m(*this);
 
 		/* Identify the element owner for the allocations to be freed */
-		if ( HEAP_CONSISTENT )
+		if ( _persist->ase() )
 		{
 			auto pe = gsl::not_null<allocator_type *>(this);
 			_persist->ase()->em_record_owner_addr_and_bitmask(&_persist->mod_owner, 1, *pe);
@@ -272,7 +270,7 @@ template <typename Table>
 		{
 			monitor_emplace<allocator_type> m(*this);
 
-			if ( HEAP_CONSISTENT )
+			if ( al_.pool()->is_crash_consistent() )
 			{
 				auto pe = gsl::not_null<allocator_type *>(this);
 				_persist->ase()->em_record_owner_addr_and_bitmask(&_persist->mod_owner, 1, *pe);

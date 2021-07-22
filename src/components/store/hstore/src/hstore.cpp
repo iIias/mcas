@@ -49,15 +49,6 @@
 #include <set>
 #include <stdexcept> /* domain_error */
 
-template<typename T>
-  struct type_number;
-
-template<> struct type_number<char> { static constexpr uint64_t value = 2; };
-
-#if HEAP_RECONSTITUTE /* reconstituting allocator */
-template<> struct type_number<impl::mod_control> { static constexpr std::uint64_t value = 4; };
-#endif /* USE_CC_HEAP */
-
 /* globals */
 
 thread_local std::map<void *, hstore::open_pool_type *> tls_cache = {};
@@ -102,6 +93,7 @@ auto hstore::move_pool(const pool_t p) -> std::shared_ptr<open_pool_type>
   return s2;
 }
 
+#include <iostream>
 hstore::hstore(
 	unsigned debug_level_
 #if HEAP_MM
@@ -124,6 +116,11 @@ hstore::hstore(
   , _pools_mutex{}
   , _pools{}
 {
+#if HEAP_MM
+std::cerr << "PLUGIN PATH " << mm_plugin_path_ << " heap mode " << USE_CC_HEAP << "\n";
+#else
+std::cerr << "NO PLUGIN PATH, heap mode " << USE_CC_HEAP << "\n";
+#endif
 }
 
 hstore::~hstore()

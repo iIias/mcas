@@ -59,37 +59,50 @@ template <typename T, typename Heap, typename Persister = persister>
 
 		deallocator_rc &operator=(const deallocator_rc &e_) = delete;
 
-		/* Note: although the probably should not be called, arm and disarm ought to
-		 * be safe as no-ops.
+		/*
+		 * Note: emplace_{arm,disarm} must be no-ops in pools which do not support
+		 * crash-consistency.
 		 */
 		void emplace_arm()
 		{
-			throw std::logic_error(__func__ + std::string(" call without crash-consistent heap"));
+			_pool->emplace_arm();
 		}
 
 		void emplace_disarm()
 		{
-			throw std::logic_error(__func__ + std::string(" call without crash-consistent heap"));
+			_pool->emplace_disarm();
 		}
 
 		void deallocate(
 			pointer_type & p_
 			, size_type sz_
-			, size_type alignment_ = alignof(T)
 		)
 		{
-			_pool->free(reinterpret_cast<persistent_t<void *> &>(p_), sizeof(T) * sz_, alignment_);
+			_pool->free(reinterpret_cast<persistent_t<void *> &>(p_), sizeof(T) * sz_);
 		}
 
-		/*
+		void deallocate(
+			pointer_type & p_
+		)
+		{
+			/* What we might like to say, if persistent_t had the intelligence:
+			 * _pool->free(static_pointer_cast<void *>(&p));
+			 */
+			_pool->free(reinterpret_cast<persistent_t<void *> *>(&p_));
+		}
+
+		/* Deallocate a "tracked" allocation.
+		 * The crash-consistent allocator remembers allocations, so hstore does not
+		 * need to "track" them.
+		 *
 		 * The "reconstituting" allocator does not track memory allocations.
 		 * The memory used by kvstore::alloc_memory anmd kvstore::free_memory
 		 * must therefore be tracked by someone else. That job falls to hstore,
-		 * even though it has nothing to do with the hash store. 
+		 * even though it has nothing to do with the hash store.
 		 */
 		void deallocate_tracked(
 			const void *p_
-			, size_type  sz_
+			, size_type sz_
 		)
 		{
 			_pool->free_tracked(p_, sizeof(T) * sz_);
@@ -97,7 +110,7 @@ template <typename T, typename Heap, typename Persister = persister>
 
 		void persist(const void *ptr, size_type len, const char * = nullptr) const
 		{
-			Persister::persist(ptr, len);
+			persister_type::persist(ptr, len);
 		}
 
 		auto pool() const

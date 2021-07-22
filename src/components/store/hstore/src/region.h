@@ -24,6 +24,7 @@
 #include "heap_rc.h"
 #include "heap_mc.h"
 #include "heap_cc.h"
+#include "heap_mm.h"
 
 #include <nupm/region_descriptor.h>
 #include <common/byte_span.h>

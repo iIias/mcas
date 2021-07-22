@@ -21,11 +21,10 @@ struct heap_mr;
 struct heap_rc;
 struct heap_mc;
 struct heap_cc;
+struct heap_mm;
 
 template <typename Data, typename Persister>
 	struct allocator_co;
-template <typename Data, typename AllocType, typename Persister>
-	struct allocator_rc;
 template <typename Data, typename AllocType, typename Persister>
 	struct allocator_cc;
 template <typename AllocType>
@@ -37,13 +36,16 @@ template <typename Persister>
 #if HEAP_OID
 		using alloc_type = allocator_co<char, Persister>;
 		using heap_alloc_type = heap_co;
+#elif HEAP_MM  && ! defined HEAP_RECONSTITUTE && ! defined HEAP_CONSISTENT
+		using heap_alloc_shared_type = heap_mm;
+		using alloc_type = allocator_cc<char, heap_alloc_shared_type, Persister>;
 #elif HEAP_RECONSTITUTE
 #if HEAP_MM
 		using heap_alloc_shared_type = heap_mr;
 #else
 		using heap_alloc_shared_type = heap_rc;
 #endif
-		using alloc_type = allocator_rc<char, heap_alloc_shared_type, Persister>;
+		using alloc_type = allocator_cc<char, heap_alloc_shared_type, Persister>;
 #elif HEAP_CONSISTENT
 #if HEAP_MM
 		using heap_alloc_shared_type = heap_mc;
@@ -52,7 +54,6 @@ template <typename Persister>
 #endif
 		using alloc_type = allocator_cc<char, heap_alloc_shared_type, Persister>;
 #endif
-
 		using heap_alloc_access_type = heap_access<heap_alloc_shared_type>;
 	};
 

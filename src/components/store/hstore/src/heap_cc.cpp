@@ -178,10 +178,10 @@ heap_cc::heap_cc(
 			, _pool0_heap
 			, [ase_, aspd_, aspk_, asx_] (const void *p) -> bool {
 				/* To answer whether the map or the allocator owns pointer p?
-				 * Guessing that true means that the map owns p
+				 * "true" means that the map (us, the callee) owns p
 				 */
 				auto cp = const_cast<void *>(p);
-				return ase_->is_in_use(cp) || aspd_->is_in_use(p) || aspk_->is_in_use(p) || asx_->is_in_use(p);
+				return ase_->is_in_use(cp) || aspd_->is_in_use(p) || aspk_->is_in_use(p) || asx_->is_in_use(p, true);
 			}
 		)
 	)
@@ -218,7 +218,7 @@ namespace
 				v.begin()
 				, v.end()
 				, std::size_t(0)
-				, [] (std::size_t s, const byte_span &iov) -> std::size_t
+				, [] (std::size_t s, byte_span iov) -> std::size_t
 					{
 						return s + ::size(iov);
 					}
@@ -322,19 +322,19 @@ auto heap_cc::grow(
 			}
 		}
 	}
-	return _eph->_capacity;
+	return _eph->capacity();
 }
 
 void heap_cc::quiesce()
 {
-	hop_hash_log<trace_heap_summary>::write(LOG_LOCATION, " size ", ::size(_pool0_heap), " allocated ", _eph->_allocated);
+	hop_hash_log<trace_heap_summary>::write(LOG_LOCATION, " size ", ::size(_pool0_heap), " allocated ", _eph->allocated());
 	VALGRIND_DESTROY_MEMPOOL(::base(_pool0_heap));
 	VALGRIND_MAKE_MEM_UNDEFINED(::base(_pool0_heap), ::size(_pool0_heap));
 	_eph->write_hist<trace_heap_summary>(_pool0_heap);
 	_eph.reset(nullptr);
 }
 
-void heap_cc::alloc(persistent_t<void *> *p_, std::size_t sz_, std::size_t align_)
+void heap_cc::alloc(persistent_t<void *> &p_, std::size_t sz_, std::size_t align_)
 {
 	auto align = clean_align(align_, sizeof(void *));
 
@@ -356,11 +356,11 @@ void heap_cc::alloc(persistent_t<void *> *p_, std::size_t sz_, std::size_t align
 			 */
 			else if ( _eph->_asx->is_armed() )
 			{
-				_eph->_asx->record_allocation(&persistent_ref(*p_), persister_nupm());
+				_eph->_asx->record_allocation(&persistent_ref(p_), persister_nupm());
 			}
 			else if ( _eph->_ase->is_armed() )
 			{
-				_eph->_ase->record_allocation(&persistent_ref(*p_), persister_nupm());
+				_eph->_ase->record_allocation(&persistent_ref(p_), persister_nupm());
 			}
 			else
 			{
@@ -370,9 +370,11 @@ void heap_cc::alloc(persistent_t<void *> *p_, std::size_t sz_, std::size_t align
 				}
 			}
 		}
+
 		/* IHeap interface does not support abstract pointers. Cast to regular pointer */
-		_eph->_heap->allocate(*reinterpret_cast<void **>(p_), sz, align);
-		/* We would like to carry the persistent_t through to the crash-conssitent allocator,
+		/* ERROR: BAD use of eph (change to something like heap_mr) */
+		_eph->allocate(p_, sz, align);
+		/* We would like to carry the persistent_t through to the crash-consistent allocator,
 		 * but for now just assume that the allocator has modifed p_, and call tick to indicate that.
 		 */
 		perishable::tick();
@@ -380,8 +382,6 @@ void heap_cc::alloc(persistent_t<void *> *p_, std::size_t sz_, std::size_t align
 		VALGRIND_MEMPOOL_ALLOC(::base(_pool0_heap), p_, sz);
 		/* size grows twice: once for aligment, and possibly once more in allocation */
 		hop_hash_log<trace_heap>::write(LOG_LOCATION, "pool ", ::base(_pool0_heap), " addr ", p_, " size ", sz_, "->", sz);
-		_eph->_allocated += sz;
-		_eph->_hist_alloc.enter(sz);
 	}
 	catch ( const std::bad_alloc & )
 	{
@@ -391,11 +391,29 @@ void heap_cc::alloc(persistent_t<void *> *p_, std::size_t sz_, std::size_t align
 	}
 }
 
-void heap_cc::free(persistent_t<void *> *p_, std::size_t sz_)
+void *heap_cc::alloc_tracked(const std::size_t sz_, const std::size_t align_)
+try
 {
-	VALGRIND_MEMPOOL_FREE(::base(_pool0_heap), *p_);
+	void * p = nullptr;
+	_eph->allocate(reinterpret_cast<persistent_t<void *> &>(p), sz_, align_);
+	VALGRIND_MEMPOOL_ALLOC(::base(_pool0_heap), p, sz_);
+	return p;
+}
+catch ( const std::bad_alloc & )
+{
+	return nullptr;
+}
+
+void heap_cc::inject_allocation(const void *, std::size_t)
+{
+	throw std::logic_error(std::string(__func__) + " not supported (and not needed) by crash-consistent heap");
+}
+
+void heap_cc::free(persistent_t<void *> &p_, std::size_t sz_)
+{
+	VALGRIND_MEMPOOL_FREE(::base(_pool0_heap), p_);
 	auto sz = _eph->free(p_, sz_);
-	hop_hash_log<trace_heap>::write(LOG_LOCATION, "pool ", ::base(_pool0_heap), " addr ", *p_, " size ", sz_, "->", sz);
+	hop_hash_log<trace_heap>::write(LOG_LOCATION, "pool ", ::base(_pool0_heap), " addr ", p_, " size ", sz_, "->", sz);
 }
 
 void heap_cc::free_tracked(
@@ -412,8 +430,8 @@ unsigned heap_cc::percent_used() const
 {
 	return
 		unsigned(
-			_eph->_capacity
-			? _eph->_allocated * 100U / _eph->_capacity
+			_eph->capacity()
+			? _eph->allocated() * 100U / _eph->capacity()
 			: 100U
 		);
 }

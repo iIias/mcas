@@ -17,10 +17,10 @@
 #include "hstore_config.h"
 
 #include "alloc_key.h" /* AK_ACTUAL */
+#include "heap_access.h"
 #include "hstore_alloc_type.h" /* hstore_alloc_type */
 #include "hstore_nupm_types.h" /* Persister */
 #include "key_not_found.h"
-#include "heap_access.h"
 #include "is_locked.h"
 #include "monitor_pin.h"
 

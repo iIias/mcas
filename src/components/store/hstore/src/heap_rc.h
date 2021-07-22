@@ -123,8 +123,6 @@ public:
 
     static constexpr std::uint64_t magic_value() { return 0xc74892d72eed493a; }
 
-	static byte_span open_region(const std::unique_ptr<dax_manager> &dax_manager, std::uint64_t uuid, unsigned numa_node);
-
 	auto grow(
 		const std::unique_ptr<dax_manager> & dax_manager
 		, std::uint64_t uuid
@@ -132,17 +130,17 @@ public:
 	) -> std::size_t;
 
 	void quiesce();
-
-	void *alloc(std::size_t sz, std::size_t alignment);
+	void alloc(persistent_t<void *> &p, std::size_t sz, std::size_t alignment);
 	void *alloc_tracked(std::size_t sz, std::size_t alignment);
 
 	void inject_allocation(const void * p, std::size_t sz);
-	std::size_t free(persistent_t<void *> &p, std::size_t sz, std::size_t alignment);
-	void free(persistent_t<void *> &p, std::size_t sz);
+	std::size_t free(persistent_t<void *> &p, std::size_t sz);
 	void free_tracked(const void *p, std::size_t sz);
 
-	void emplace_arm() const;
-	void emplace_disarm() const;
+	void extend_arm() const {};
+	void extend_disarm() const {};
+	void emplace_arm() const {};
+	void emplace_disarm() const {};
 
 	impl::allocation_state_pin *aspd() const;
 	impl::allocation_state_pin *aspk() const;
@@ -154,14 +152,9 @@ public:
 
 	bool is_reconstituted(const void * p) const;
 
-	/* debug */
-	unsigned numa_node() const
-	{
-		return _numa_node;
-	}
-
     nupm::region_descriptor regions() const;
 	bool is_crash_consistent() const { return false; }
+	bool can_reconstitute() const { return true; }
 };
 
 #endif

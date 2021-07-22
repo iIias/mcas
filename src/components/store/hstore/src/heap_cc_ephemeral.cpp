@@ -40,8 +40,6 @@ namespace
 	persister p_cc{};
 }
 
-/* initial cosntruction */
-
 heap_cc_ephemeral::heap_cc_ephemeral(
 	unsigned debug_level_
 	, impl::allocation_state_emplace *ase_
@@ -52,7 +50,7 @@ heap_cc_ephemeral::heap_cc_ephemeral(
 	, string_view id_
 	, string_view backing_file_
 	, const std::vector<byte_span> &rv_full_
-	, const byte_span &pool0_heap_
+	, byte_span pool0_heap_
 )
 	: common::log_source(debug_level_)
 	, _heap(std::move(p))
@@ -97,7 +95,7 @@ heap_cc_ephemeral::heap_cc_ephemeral(
   CPLOG(2, "%s : pool0_heap: %p.%zx", __func__, ::base(pool0_heap_), ::size(pool0_heap_));
 }
 
-/* initial cosntruction */
+/* initial construction */
 heap_cc_ephemeral::heap_cc_ephemeral(
 	unsigned debug_level_
 	, impl::allocation_state_emplace *ase_
@@ -107,7 +105,7 @@ heap_cc_ephemeral::heap_cc_ephemeral(
 	, string_view id_
 	, string_view backing_file_
 	, const std::vector<byte_span> &rv_full_
-	, const byte_span &pool0_heap_
+	, byte_span pool0_heap_
 )
 	: heap_cc_ephemeral(debug_level_, ase_, aspd_, aspk_, asx_, std::make_unique<ccpm::cca>(&p_cc, ccpm::region_span(&*ccpm::region_vector_t(pool0_heap_).begin(), 1)), id_, backing_file_, rv_full_, pool0_heap_)
 {}
@@ -122,7 +120,7 @@ heap_cc_ephemeral::heap_cc_ephemeral(
 	, string_view id_
 	, string_view backing_file_
 	, const std::vector<byte_span> &rv_full_
-	, const byte_span &pool0_heap_
+	, byte_span pool0_heap_
 	, ccpm::ownership_callback_t f
 )
 	: heap_cc_ephemeral(
@@ -141,8 +139,8 @@ heap_cc_ephemeral::heap_cc_ephemeral(
 {}
 
 void heap_cc_ephemeral::add_managed_region(
-	const byte_span &r_full
-	, const byte_span &r_heap
+	byte_span r_full
+	, byte_span r_heap
 	, const unsigned // numa_node
 )
 {
@@ -163,7 +161,21 @@ void heap_cc_ephemeral::add_managed_region(
 	}
 }
 
-std::size_t heap_cc_ephemeral::free(persistent_t<void *> *p_, std::size_t sz_)
+void heap_cc_ephemeral::allocate(
+	persistent_t<void *> &p_
+	, std::size_t sz_
+	, std::size_t alignment_
+)
+{
+	if ( S_OK != _heap->allocate(*reinterpret_cast<void **>(&p_), sz_, alignment_) )
+	{
+		throw std::bad_alloc{};
+	}
+	_allocated += sz_;
+	_hist_alloc.enter(sz_);
+}
+
+std::size_t heap_cc_ephemeral::free(persistent_t<void *> &p_, std::size_t sz_)
 {
 	/* Our free does not know the true size, because alignment is not known.
 	 * But the pool free will know, as it can see how much has been allocated.
@@ -177,24 +189,24 @@ std::size_t heap_cc_ephemeral::free(persistent_t<void *> *p_, std::size_t sz_)
 	 */
 		if ( _asx->is_armed() )
 		{
-			CPLOG(1, PREFIX "unexpected segment deallocation of %p of %zu", LOCATION, persistent_ref(*p_), sz_);
+			CPLOG(1, PREFIX "unexpected segment deallocation of %p of %zu", LOCATION, persistent_ref(p_), sz_);
 			abort();
 #if 0
-			_asx->record_deallocation(&persistent_ref(*p_), persister_nupm());
+			_asx->record_deallocation(&persistent_ref(p_), persister_nupm());
 #endif
 		}
 		else if ( _ase->is_armed() )
 		{
-			_ase->record_deallocation(&persistent_ref(*p_), persister_nupm());
+			_ase->record_deallocation(&persistent_ref(p_), persister_nupm());
 		}
 		else
 		{
-			CPLOG(1, PREFIX "leaky deallocation of %p of %zu", LOCATION, persistent_ref(*p_), sz_);
+			CPLOG(1, PREFIX "leaky deallocation of %p of %zu", LOCATION, persistent_ref(p_), sz_);
 		}
 	}
 
 	/* IHeap interface does not support abstract pointers. Cast to regular pointer */
-	auto sz = (_heap->free(*reinterpret_cast<void **>(p_), sz_), sz_);
+	auto sz = (_heap->free(*reinterpret_cast<void **>(&p_), sz_), sz_);
 	/* We would like to carry the persistent_t through to the crash-conssitent allocator,
 	 * but for now just assume that the allocator has modifed p_, and call tick to indicate that.
 	 */

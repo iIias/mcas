@@ -26,7 +26,7 @@ template <typename Pool>
 	private:
 		Pool _p;
 		pin_control<typename Pool::shared_type> _c;
-		char *_old_cptr; /* nullptr if HEAP_CONSISTENT */
+		char *_old_cptr;
 		bool heap_consistent() const { return _p->is_crash_consistent(); }
 		monitor_pin(const monitor_pin &) = delete;
 		monitor_pin &operator=(const monitor_pin &) = delete;

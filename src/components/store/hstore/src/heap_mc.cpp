@@ -19,6 +19,7 @@
 #include "clean_align.h"
 #include "dax_manager.h"
 #include "heap_mc_ephemeral.h"
+#include "valgrind_memcheck.h"
 #include <common/env.h>
 #include <common/pointer_cast.h>
 #include <common/utils.h> /* round_up */
@@ -89,6 +90,7 @@ namespace
  * 4 KiB produces sometimes produces a disagreement between server and AOo mappings
  * which manifest as incorrect key and data values as seen on the ADO side.
  */
+/* initial */
 heap_mc::heap_mc(
 	const unsigned debug_level_
 	, const common::string_view plugin_path_
@@ -108,7 +110,7 @@ heap_mc::heap_mc(
 	, _more_region_uuids_size(0)
 	, _more_region_uuids()
 	, _eph(
-		std::make_unique<heap_mc_ephemeral>(
+		new heap_mc_ephemeral(
 			debug_level_
 			, plugin_path_
 			, ase_
@@ -137,6 +139,7 @@ heap_mc::heap_mc(
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Winit-self"
 #pragma GCC diagnostic ignored "-Wuninitialized"
+/* restoration */
 heap_mc::heap_mc(
 	const unsigned debug_level_
 	, const common::string_view plugin_path_
@@ -156,7 +159,7 @@ heap_mc::heap_mc(
 	, _more_region_uuids_size(this->_more_region_uuids_size)
 	, _more_region_uuids(this->_more_region_uuids)
 	, _eph(
-		std::make_unique<heap_mc_ephemeral>(
+		new heap_mc_ephemeral(
 			debug_level_
 			, plugin_path_
 			, ase_
@@ -180,10 +183,10 @@ heap_mc::heap_mc(
 			, _pool0_heap
 			, [ase_, aspd_, aspk_, asx_] (const void *p) -> bool {
 				/* To answer whether the map or the allocator owns pointer p?
-				 * Guessing that true means that the map owns p
+				 * "true" that true means that the map (us, the calllee) owns p
 				 */
 				auto cp = const_cast<void *>(p);
-				return ase_->is_in_use(cp) || aspd_->is_in_use(p) || aspk_->is_in_use(p) || asx_->is_in_use(p);
+				return ase_->is_in_use(cp) || aspd_->is_in_use(p) || aspk_->is_in_use(p) || asx_->is_in_use(p, true);
 			}
 		)
 	)
@@ -220,7 +223,7 @@ namespace
 				v.begin()
 				, v.end()
 				, std::size_t(0)
-				, [] (std::size_t s, const byte_span &iov) -> std::size_t
+				, [] (std::size_t s, byte_span iov) -> std::size_t
 					{
 						return s + ::size(iov);
 					}
@@ -259,7 +262,7 @@ auto heap_mc::grow(
 				for ( auto i = old_list_size; i != new_list_size; ++i )
 				{
 					const auto &r = new_region_list[i];
-					_eph->add_managed_region(r, r, _numa_node);
+					_eph->add_managed_region(r, r);
 					hop_hash_log<trace_heap_summary>::write(
 						LOG_LOCATION
 						, " pool ", ::base(r), " .. ", ::end(r)
@@ -297,7 +300,7 @@ auto heap_mc::grow(
 						}
 						for ( const auto & r : rv )
 						{
-							_eph->add_managed_region(r, r, _numa_node);
+							_eph->add_managed_region(r, r);
 							hop_hash_log<trace_heap_summary>::write(
 								LOG_LOCATION
 								, " pool ", ::base(r), " .. ", ::end(r)
@@ -324,7 +327,7 @@ auto heap_mc::grow(
 			}
 		}
 	}
-	return _eph->_capacity;
+	return _eph->capacity();
 }
 
 void heap_mc::quiesce()
@@ -340,7 +343,7 @@ void heap_mc::quiesce()
 	_eph.reset(nullptr);
 }
 
-void heap_mc::alloc(persistent_t<void *> *p_, std::size_t sz_, std::size_t align_)
+void heap_mc::alloc(persistent_t<void *> &p_, std::size_t sz_, std::size_t align_)
 {
 	auto align = clean_align(align_, sizeof(void *));
 
@@ -349,24 +352,25 @@ void heap_mc::alloc(persistent_t<void *> *p_, std::size_t sz_, std::size_t align
 
 	try
 	{
-		if ( _eph->is_crash_consistent() )
+		auto eph = dynamic_cast<heap_mc_ephemeral *>(_eph.get());
+		if ( eph && eph->is_crash_consistent() )
 		{
-			if ( _eph->_aspd->is_armed() )
+			if ( eph->_aspd->is_armed() )
 			{
 			}
-			else if ( _eph->_aspk->is_armed() )
+			else if ( eph->_aspk->is_armed() )
 			{
 			}
 			/* Note: order of testing is important. An extend arm+allocate) can occur while
 			 * emplace is armed, but not vice-versa
 			 */
-			else if ( _eph->_asx->is_armed() )
+			else if ( eph->_asx->is_armed() )
 			{
-				_eph->_asx->record_allocation(&persistent_ref(*p_), persister_nupm());
+				eph->_asx->record_allocation(&persistent_ref(p_), persister_nupm());
 			}
-			else if ( _eph->_ase->is_armed() )
+			else if ( eph->_ase->is_armed() )
 			{
-				_eph->_ase->record_allocation(&persistent_ref(*p_), persister_nupm());
+				eph->_ase->record_allocation(&persistent_ref(p_), persister_nupm());
 			}
 			else
 			{
@@ -378,7 +382,7 @@ void heap_mc::alloc(persistent_t<void *> *p_, std::size_t sz_, std::size_t align
 		}
 
 		/* IHeap interface does not support abstract pointers. Cast to regular pointer */
-		_eph->_heap->allocate(*reinterpret_cast<void **>(p_), sz, align);
+		eph->allocate(p_, sz, align);
 		/* We would like to carry the persistent_t through to the crash-conssitent allocator,
 		 * but for now just assume that the allocator has modifed p_, and call tick to indicate that.
 		 */
@@ -387,10 +391,6 @@ void heap_mc::alloc(persistent_t<void *> *p_, std::size_t sz_, std::size_t align
 		VALGRIND_MEMPOOL_ALLOC(::base(_pool0_heap), p_, sz);
 		/* size grows twice: once for aligment, and possibly once more in allocation */
 		hop_hash_log<trace_heap>::write(LOG_LOCATION, "pool ", ::base(_pool0_heap), " addr ", p_, " size ", sz_, "->", sz);
-#if 0
-		_eph->_allocated += sz;
-#endif
-		_eph->_hist_alloc.enter(sz);
 	}
 	catch ( const std::bad_alloc & )
 	{
@@ -400,7 +400,25 @@ void heap_mc::alloc(persistent_t<void *> *p_, std::size_t sz_, std::size_t align
 	}
 }
 
-void heap_mc::free(persistent_t<void *> *p_, std::size_t sz_)
+void *heap_mc::alloc_tracked(const std::size_t sz_, const std::size_t align_)
+try
+{
+	void * p = nullptr;
+	_eph->allocate(reinterpret_cast<persistent_t<void *> &>(p), sz_, align_);
+	VALGRIND_MEMPOOL_ALLOC(::base(_pool0_heap), p, sz_);
+	return p;
+}
+catch ( const std::bad_alloc & )
+{
+	return nullptr;
+}
+
+void heap_mc::inject_allocation(const void *, std::size_t)
+{
+	throw std::logic_error(std::string(__func__) + " not supported (and not needed) by crash-consistent heap");
+}
+
+void heap_mc::free(persistent_t<void *> &p_, std::size_t sz_)
 {
 	VALGRIND_MEMPOOL_FREE(::base(_pool0_heap), p_);
 	auto sz = _eph->free(p_, sz_);
@@ -414,7 +432,7 @@ void heap_mc::free_tracked(
 {
 	VALGRIND_MEMPOOL_FREE(::base(_pool0_heap), p_);
 	hop_hash_log<trace_heap>::write(LOG_LOCATION, "pool ", ::base(_pool0_heap), " addr ", p_, " size ", sz_);
-	return _eph->free_tracked(p_, sz_, _numa_node);
+	return _eph->free_tracked(p_, sz_);
 }
 
 unsigned heap_mc::percent_used() const
@@ -434,27 +452,55 @@ unsigned heap_mc::percent_used() const
 
 void heap_mc::extend_arm() const
 {
-	_eph->_asx->arm(persister_nupm());
+	if ( auto eph = dynamic_cast<heap_mc_ephemeral *>(_eph.get()) )
+	{
+		eph->_asx->arm(persister_nupm());
+	}
 }
 
 void heap_mc::extend_disarm() const
 {
-	_eph->_asx->disarm(persister_nupm());
+	if ( auto eph = dynamic_cast<heap_mc_ephemeral *>(_eph.get()) )
+	{
+		eph->_asx->disarm(persister_nupm());
+	}
 }
 
-void heap_mc::emplace_arm() const { _eph->_ase->arm(persister_nupm()); }
-void heap_mc::emplace_disarm() const { _eph->_ase->disarm(persister_nupm()); }
+void heap_mc::emplace_arm() const
+{
+	if ( auto eph = dynamic_cast<heap_mc_ephemeral *>(_eph.get()) )
+	{
+		eph->_ase->arm(persister_nupm());
+	}
+}
 
-impl::allocation_state_pin *heap_mc::aspd() const { return _eph->_aspd; }
-impl::allocation_state_pin *heap_mc::aspk() const { return _eph->_aspk; }
+void heap_mc::emplace_disarm() const
+{
+	if ( auto eph = dynamic_cast<heap_mc_ephemeral *>(_eph.get()) )
+	{
+		eph->_ase->disarm(persister_nupm());
+	}
+}
+
+impl::allocation_state_pin *heap_mc::aspd() const
+{
+	auto &eph = dynamic_cast<heap_mc_ephemeral &>(*_eph);
+	return eph._aspd;
+}
+
+impl::allocation_state_pin *heap_mc::aspk() const
+{
+	auto &eph = dynamic_cast<heap_mc_ephemeral &>(*_eph);
+	return eph._aspk;
+}
 
 void heap_mc::pin_data_arm(
 	cptr &cptr_
 ) const
 {
-	if ( _eph->is_crash_consistent() )
+	if ( auto eph = dynamic_cast<heap_mc_ephemeral *>(_eph.get()) )
 	{
-		_eph->_aspd->arm(cptr_, persister_nupm());
+		eph->_aspd->arm(cptr_, persister_nupm());
 	}
 }
 
@@ -462,37 +508,48 @@ void heap_mc::pin_key_arm(
 	cptr &cptr_
 ) const
 {
-	if ( _eph->is_crash_consistent() )
+	if ( auto eph = dynamic_cast<heap_mc_ephemeral *>(_eph.get()) )
 	{
-		_eph->_aspk->arm(cptr_, persister_nupm());
+		eph->_aspk->arm(cptr_, persister_nupm());
 	}
 }
 
 char *heap_mc::pin_data_get_cptr() const
 {
-	assert( ! _eph->is_crash_consistent() || _eph->_aspd->is_armed());
+	auto eph = dynamic_cast<heap_mc_ephemeral *>(_eph.get());
+	assert( ! _eph->is_crash_consistent() || eph->_aspd->is_armed());
 	return
-		_eph->is_crash_consistent()
-		? _eph->_aspd->get_cptr()
+		eph
+		? eph->_aspd->get_cptr()
 		: nullptr
 		;
 }
 char *heap_mc::pin_key_get_cptr() const
 {
-	assert( ! _eph->is_crash_consistent() || _eph->_aspk->is_armed());
+	auto eph = dynamic_cast<heap_mc_ephemeral *>(_eph.get());
+	assert( ! _eph->is_crash_consistent() || eph->_aspk->is_armed());
 	return
-		_eph->is_crash_consistent()
-		? _eph->_aspk->get_cptr()
+		eph
+		? eph->_aspk->get_cptr()
 		: nullptr
 		;
 }
 
 void heap_mc::pin_data_disarm() const
 {
-	_eph->_aspd->disarm(persister_nupm());
+	if ( auto eph = dynamic_cast<heap_mc_ephemeral *>(_eph.get()) )
+	{
+		eph->_aspd->disarm(persister_nupm());
+	}
 }
 
 void heap_mc::pin_key_disarm() const
 {
-	_eph->_aspk->disarm(persister_nupm());
+	if ( auto eph = dynamic_cast<heap_mc_ephemeral *>(_eph.get()) )
+	{
+		eph->_aspk->disarm(persister_nupm());
+	}
 }
+
+bool heap_mc::is_crash_consistent() const { return _eph->is_crash_consistent(); }
+bool heap_mc::can_reconstitute() const { return _eph->can_reconstitute(); }
