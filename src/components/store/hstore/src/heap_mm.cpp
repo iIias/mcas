@@ -102,7 +102,7 @@ namespace
 		ccpm::cca::ctor_args args{pe_, gsl::span<common::byte_span>{}, true /* force_init */, [] (const void *) -> bool { return true; }};
 		MM_plugin_wrapper pw(std::string(path_), "", &args);
 		pw.init();
-		return std::move(pw);
+		return pw;
 	}
 
 	MM_plugin_wrapper heap_mm_make_wrapper(
@@ -115,7 +115,7 @@ namespace
 		ccpm::cca::ctor_args args{pe_, range_, false /* force_init */, callee_owns_};
 		MM_plugin_wrapper pw(std::string(path_), "", &args);
 		pw.init();
-		return std::move(pw);
+		return pw;
 	}
 
 	using string_view = common::string_view;

@@ -30,7 +30,7 @@ namespace
 		ccpm::cca::ctor_args args{pe_, range_, force_init_, callee_owns_};
 		MM_plugin_wrapper pw(std::string(path_), "", &args);
 		pw.init();
-		return std::move(pw);
+		return pw;
 	}
 }
 

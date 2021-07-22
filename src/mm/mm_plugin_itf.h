@@ -449,6 +449,8 @@ public:
     return _ft.mm_plugin_can_inject_allocation(_heap);
   }
 
+  MM_plugin_wrapper(const MM_plugin_wrapper &) = delete;
+
   MM_plugin_wrapper(MM_plugin_wrapper && other) noexcept
     : _module(std::move(other._module))
     , _ft(std::move(other._ft))
@@ -456,6 +458,7 @@ public:
   {
     other._heap = nullptr;
   }
+
 private:
   void *                     _module;
   mm_plugin_function_table_t _ft;
