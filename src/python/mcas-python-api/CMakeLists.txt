@@ -2,13 +2,21 @@ cmake_minimum_required(VERSION 3.5) # may work with earlier versions
 
 project(mcas-python-api CXX)
 
-option(BUILD_PYTHON_SUPPORT "Build Python support" OFF)
-
-find_program(PYTHON NAMES "python3.7" "python3.6" "python3.5")
+find_program(PYTHON NAMES "python3.8" "python3.7" "python3.6" "python3.5")
 
 if (PYTHON AND BUILD_PYTHON_SUPPORT)
 
   get_filename_component(PYTHON_FILENAME ${PYTHON} NAME)
+
+  # get python locations
+  execute_process ( COMMAND ${PYTHON} -m site --user-site OUTPUT_VARIABLE PYTHON_SITE_PACKAGES OUTPUT_STRIP_TRAILING_WHITESPACE)
+  execute_process ( COMMAND ${PYTHON} -c "from sysconfig import get_paths as gp; print(gp()['include'])" OUTPUT_VARIABLE PYTHON_INCLUDE_DIR OUTPUT_STRIP_TRAILING_WHITESPACE)
+  execute_process ( COMMAND ${PYTHON} -c "from sysconfig import get_config_vars as gc; print(gc()['LIBPL'])" OUTPUT_VARIABLE PYTHON_LIB_DIR OUTPUT_STRIP_TRAILING_WHITESPACE)
+  execute_process ( COMMAND ${PYTHON} -c "from sysconfig import get_config_vars as gc; print(gc()['BLDLIBRARY'])" OUTPUT_VARIABLE PYTHON_BLDLIB_DIR OUTPUT_STRIP_TRAILING_WHITESPACE)
+
+  message("-- Python    site : ${PYTHON_SITE_PACKAGES}")
+  message("--         stdlib : ${PYTHON_LIB_DIR}")
+  message("--        include : ${PYTHON_INCLUDE_DIR}")
 
   message("-- Building Python support.")
   set(SETUP_PY_IN "${CMAKE_CURRENT_SOURCE_DIR}/setup.py.in")
@@ -21,7 +29,8 @@ if (PYTHON AND BUILD_PYTHON_SUPPORT)
   string(REGEX REPLACE  "^.*python" "" PYTHON_VERSION ${PYTHON})
   message("-- Python version ${PYTHON_VERSION}")
   set(LIBDIR      "lib.linux-x86_64-${PYTHON_VERSION}")
-
+  set(PYTHON_SITE_NUMPY_INCLUDES "${PYTHON_SITE_PACKAGES}/numpy/core/include")
+    
   configure_file(${SETUP_PY_IN} ${SETUP_PY})
   configure_file(${CONFIG_H_IN} ${CONFIG_H})
   configure_file(${CMAKE_CURRENT_SOURCE_DIR}/mcas-shell.in ${CMAKE_CURRENT_SOURCE_DIR}/mcas-shell)

@@ -1,5 +1,5 @@
 /*
-   Copyright [2017-2020] [IBM Corporation]
+   Copyright [2017-2021] [IBM Corporation]
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
    You may obtain a copy of the License at
@@ -32,7 +32,7 @@
 
 namespace
 {
-#if USE_CC_HEAP == 4
+#if HEAP_CONSISTENT
 	auto leak_check_str = std::getenv("LEAK_CHECK");
 	bool leak_check = bool(leak_check_str);
 #endif
@@ -340,7 +340,7 @@ void heap_cc::alloc(persistent_t<void *> *p_, std::size_t sz_, std::size_t align
 	auto sz = (sz_ + align - 1U)/align * align;
 
 	try {
-#if USE_CC_HEAP == 4
+#if HEAP_CONSISTENT
 		if ( _eph->_aspd->is_armed() )
 		{
 		}
@@ -424,7 +424,7 @@ void heap_cc::pin_data_arm(
 	cptr &cptr_
 ) const
 {
-#if USE_CC_HEAP == 4
+#if HEAP_CONSISTENT
 	_eph->_aspd->arm(cptr_, persister_nupm());
 #else
 	(void)cptr_;
@@ -435,7 +435,7 @@ void heap_cc::pin_key_arm(
 	cptr &cptr_
 ) const
 {
-#if USE_CC_HEAP == 4
+#if HEAP_CONSISTENT
 	_eph->_aspk->arm(cptr_, persister_nupm());
 #else
 	(void)cptr_;
@@ -444,7 +444,7 @@ void heap_cc::pin_key_arm(
 
 char *heap_cc::pin_data_get_cptr() const
 {
-#if USE_CC_HEAP == 4
+#if HEAP_CONSISTENT
 	assert(_eph->_aspd->is_armed());
 	return _eph->_aspd->get_cptr();
 #else
@@ -453,7 +453,7 @@ char *heap_cc::pin_data_get_cptr() const
 }
 char *heap_cc::pin_key_get_cptr() const
 {
-#if USE_CC_HEAP == 4
+#if HEAP_CONSISTENT
 	assert(_eph->_aspk->is_armed());
 	return _eph->_aspk->get_cptr();
 #else

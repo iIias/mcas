@@ -14,7 +14,7 @@ DEBUG=${DEBUG:-0}
 
 CONFIG_STR="$("./dist/testing/hstore-ado0.py" "$STORETYPE" "$DAXTYPE" "$NODE_IP" 11911 )"
 # launch MCAS server
-[ 0 -lt $DEBUG ] && echo DAX_RESET=1 ./dist/bin/mcas --config \`"$CONFIG_STR"\` --forced-exit --debug $DEBUG
+[ 0 -lt $DEBUG ] && echo DAX_RESET=1 ./dist/bin/mcas --config \'"$CONFIG_STR"\' --forced-exit --debug $DEBUG
 DAX_RESET=1 ./dist/bin/mcas --config "$CONFIG_STR" --forced-exit --debug $DEBUG &> test$TESTID-server.log &
 SERVER_PID=$!
 
@@ -35,4 +35,4 @@ trap "kill -9 $SERVER_PID $CLIENT_PID &> /dev/null" EXIT
 wait $CLIENT_PID; CLIENT_RC=$?
 wait $SERVER_PID; SERVER_RC=$?
 
-pass_fail_by_code client $CLIENT_RC server $SERVER_RC && pass_fail $CLIENT_LOG $TESTID $TESTID
+pass_fail_by_code client $CLIENT_RC server $SERVER_RC && pass_fail $CLIENT_LOG $TESTID

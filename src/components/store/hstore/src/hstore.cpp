@@ -54,7 +54,7 @@ template<typename T>
 
 template<> struct type_number<char> { static constexpr uint64_t value = 2; };
 
-#if USE_CC_HEAP == 3 /* reconstituting allocator */
+#if HEAP_RECONSTITUTE /* reconstituting allocator */
 template<> struct type_number<impl::mod_control> { static constexpr std::uint64_t value = 4; };
 #endif /* USE_CC_HEAP */
 
@@ -102,12 +102,31 @@ auto hstore::move_pool(const pool_t p) -> std::shared_ptr<open_pool_type>
   return s2;
 }
 
-hstore::hstore(unsigned debug_level_, const string_view owner_, const string_view name_, std::unique_ptr<dax_manager> &&mgr_)
+hstore::hstore(
+	unsigned debug_level_
+#if HEAP_MM
+	, const string_view mm_plugin_path_
+#endif
+	, const string_view owner_
+	, const string_view name_
+	, std::unique_ptr<dax_manager> &&mgr_
+	)
   : common::log_source(debug_level_)
-  , _pool_manager(std::make_shared<pm_type>(debug_level(), owner_, name_, std::move(mgr_)))
+  , _pool_manager(std::make_shared<pm_type>(
+		debug_level()
+#if HEAP_MM
+		, mm_plugin_path_
+#endif
+		, owner_
+		, name_
+		, std::move(mgr_))
+	)
   , _pools_mutex{}
   , _pools{}
 {
+#if HEAP_MM
+  PLOG("hstore plugin path(%s)", mm_plugin_path_.data());
+#endif
 }
 
 hstore::~hstore()
@@ -642,6 +661,7 @@ auto hstore::lock(
   , lock_type_t type
   , void *& out_value
   , std::size_t & out_value_len
+  , std::size_t alignment
   , key_t& out_key
   , const char ** out_key_ptr
 ) -> status_t
@@ -650,7 +670,12 @@ try
   TM_ROOT()
   const auto session = static_cast<session_type *>(locate_session(pool));
   if(!session) return E_FAIL;
-  auto r = session->lock(AK_INSTANCE TM_REF key, type, out_value, out_value_len);
+	/* 0 probably means that alignment is a don't care, which is the same as alignment 1 */
+	if ( alignment == 0 ) { alignment = 1; }
+#if 0 /* As with mapstore, allocator (not hstore) deals with non-2^n alignments */
+	if ( ( alignment & (alignment - 1) ) != 0  ) { return E_BAD_ALIGNMENT; }
+#endif
+  auto r = session->lock(AK_INSTANCE TM_REF key, type, out_value, out_value_len, alignment);
 
   out_key = r.key;
   if ( out_key_ptr )
@@ -677,6 +702,11 @@ try
   case lock_result::e_state::creation_failed:
     /* should not happen. */
     return E_KEY_EXISTS;
+#if 0 /* not a separate error */
+  case lock_result::e_state::misaligned:
+    /* should not happen. */
+    return E_MISALIGNED;
+#endif
   }
   return E_KEY_NOT_FOUND;
 }

@@ -1,5 +1,5 @@
 /*
-   Copyright [2017-2020] [IBM Corporation]
+   Copyright [2017-2021] [IBM Corporation]
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
    You may obtain a copy of the License at
@@ -25,44 +25,35 @@
 
 #include <cstddef> /* size_t, ptrdiff_t */
 
-struct heap_cc;
-
-template <typename T, typename Persister>
+template <typename T, typename Heap, typename Persister>
 	struct allocator_cc;
 
-template <>
-	struct allocator_cc<void, persister>
-		: public deallocator_cc<void, persister>
+template <typename Heap, typename Persister>
+	struct allocator_cc<void, Heap, Persister>
+		: public deallocator_cc<void, Heap, Persister>
 	{
-		using deallocator_type = deallocator_cc<void, persister>;
+		using deallocator_type = deallocator_cc<void, Heap, Persister>;
 		using typename deallocator_type::value_type;
 	};
 
-template <typename Persister>
-	struct allocator_cc<void, Persister>
-		: public deallocator_cc<void, Persister>
-	{
-		using deallocator_type = deallocator_cc<void, Persister>;
-		using typename deallocator_type::value_type;
-	};
-
-template <typename T, typename Persister = persister>
+template <typename T, typename Heap, typename Persister = persister>
 	struct allocator_cc
-		: public deallocator_cc<T, Persister>
+		: public deallocator_cc<T, Heap, Persister>
 	{
-		using deallocator_type = deallocator_cc<T, Persister>;
+		using deallocator_type = deallocator_cc<T, Heap, Persister>;
+		using typename deallocator_type::heap_type;
 		using typename deallocator_type::size_type;
 		using typename deallocator_type::value_type;
 		using typename deallocator_type::pointer_type;
 
-		allocator_cc(const heap_access<heap_cc> &pool_, Persister p_ = Persister()) noexcept
-			: deallocator_cc<T, Persister>(pool_, (p_))
+		allocator_cc(const heap_access<heap_type> &pool_, Persister p_ = Persister()) noexcept
+			: deallocator_type(pool_, (p_))
 		{}
 
 		allocator_cc(const allocator_cc &a_) noexcept = default;
 
 		template <typename U, typename P>
-			allocator_cc(const allocator_cc<U, P> &a_) noexcept
+			allocator_cc(const allocator_cc<U, Heap, P> &a_) noexcept
 				: allocator_cc(a_.pool())
 			{}
 
@@ -94,7 +85,7 @@ template <typename T, typename Persister = persister>
 			}
 		}
 
-		/* allocate and remember the allocation. heap_access<heap_cc> does this for every allocation */
+		/* allocate and remember the allocation. heap_access<heap_type> does this for every allocation */
 		void allocate_tracked(
 			AK_ACTUAL
 			pointer_type & p_

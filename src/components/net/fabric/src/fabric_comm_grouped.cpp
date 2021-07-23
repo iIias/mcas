@@ -1,5 +1,5 @@
 /*
-   Copyright [2017-2019] [IBM Corporation]
+   Copyright [2017-2021] [IBM Corporation]
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
    You may obtain a copy of the License at
@@ -21,7 +21,7 @@
 
 #include "async_req_record.h"
 #include "fabric_generic_grouped.h"
-#include "fabric_op_control.h" /* fi_cq_entry_t */
+#include "fabric_endpoint.h" /* fi_cq_entry_t */
 #include "fabric_runtime_error.h"
 
 #include <sys/uio.h> /* struct iovec */
@@ -257,4 +257,23 @@ void Fabric_comm_grouped::wait_for_next_completion(unsigned polls_limit)
 void Fabric_comm_grouped::unblock_completions()
 {
   return _conn.unblock_completions();
+}
+
+auto Fabric_comm_grouped::register_memory(const_byte_span contig_,
+                                        std::uint64_t key,
+                                        std::uint64_t flags) -> memory_region_t
+{
+  return _conn.register_memory(contig_, key, flags);
+}
+void Fabric_comm_grouped::deregister_memory(memory_region_t memory_region)
+{
+  return _conn.deregister_memory(memory_region);
+}
+std::uint64_t Fabric_comm_grouped::get_memory_remote_key(memory_region_t m) const noexcept
+{
+  return _conn.get_memory_remote_key(m);
+}
+void * Fabric_comm_grouped::get_memory_descriptor(memory_region_t m) const noexcept
+{
+  return _conn.get_memory_descriptor(m);
 }

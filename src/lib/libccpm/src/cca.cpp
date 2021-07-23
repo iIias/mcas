@@ -1,5 +1,5 @@
 /*
-   Copyright [2019, 2020] [IBM Corporation]
+   Copyright [2019, 2021] [IBM Corporation]
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
    You may obtain a copy of the License at
@@ -29,22 +29,23 @@ namespace
 	bool trace_fine() { return 1 < trace_level; }
 }
 
-ccpm::cca::cca()
+ccpm::cca::cca(persist_type persist_)
 	: _top()
 	, _last_top_allocate(0)
 	, _last_top_free(0)
+	, _persist(persist_)
 {}
 
-ccpm::cca::cca(const region_vector_t &regions, ownership_callback_t resolver)
-	: cca()
+ccpm::cca::cca(persist_type persist_, const region_span regions_, ownership_callback_t resolver_)
+	: cca(persist_)
 {
-	init(regions, resolver, false);
+	init(regions_, resolver_, false);
 }
 
-ccpm::cca::cca(const region_vector_t &regions)
-	: cca()
+ccpm::cca::cca(persist_type persist_, const region_span regions_)
+	: cca(persist_)
 {
-	init(regions, nullptr, true);
+	init(regions_, nullptr, true);
 }
 
 ccpm::cca::~cca()
@@ -52,7 +53,7 @@ ccpm::cca::~cca()
 }
 
 bool ccpm::cca::reconstitute(
-	const region_vector_t &regions_
+	const region_span regions_
 	, ownership_callback_t resolver_
 	, const bool force_init_
 )
@@ -63,7 +64,7 @@ bool ccpm::cca::reconstitute(
 }
 
 void ccpm::cca::init(
-	const region_vector_t &regions_
+	const region_span regions_
 	, ownership_callback_t resolver_
 	, const bool force_init_
 )
@@ -73,8 +74,8 @@ void ccpm::cca::init(
 	{
 		_top.push_back(
 			force_init_
-			? std::make_unique<area_top>(r, trace_level, std::cerr)
-			: std::make_unique<area_top>(r, resolver_, trace_level, std::cerr)
+			? std::make_unique<area_top>(_persist, r, trace_level, std::cerr)
+			: std::make_unique<area_top>(_persist, r, resolver_, trace_level, std::cerr)
 		);
 	}
 	if ( trace_fine() )
@@ -83,11 +84,11 @@ void ccpm::cca::init(
 	}
 }
 
-void ccpm::cca::add_regions(const region_vector_t &regions_)
+void ccpm::cca::add_regions(const region_span regions_)
 {
 	for ( const auto & r : regions_ )
 	{
-		_top.push_back(std::make_unique<area_top>(r, trace_level, std::cerr));
+		_top.push_back(std::make_unique<area_top>(_persist, r, trace_level, std::cerr));
 	}
 }
 
@@ -127,7 +128,7 @@ auto ccpm::cca::allocate(
 	}
 	for ( auto it = split; it != _top.end(); ++it )
 	{
-		(*it)->allocate(ptr_, bytes_, alignment_);
+		(*it)->allocate(_persist, ptr_, bytes_, alignment_);
 		if ( ptr_ != nullptr )
 		{
 			_last_top_allocate = it - _top.begin();
@@ -142,7 +143,7 @@ auto ccpm::cca::allocate(
 
 	for ( auto it = _top.begin(); it != split; ++it )
 	{
-		(*it)->allocate(ptr_, bytes_, alignment_);
+		(*it)->allocate(_persist, ptr_, bytes_, alignment_);
 		if ( ptr_ != nullptr )
 		{
 			_last_top_allocate = it - _top.begin();
@@ -181,7 +182,7 @@ auto ccpm::cca::free(
 	{
 		if ( (*it)->contains(ptr_) )
 		{
-			(*it)->deallocate(ptr_, bytes_);
+			(*it)->deallocate(_persist, ptr_, bytes_);
 			_last_top_free = it - _top.begin();
 			return ptr_ == nullptr ? S_OK : E_FAIL;
 		}
@@ -191,7 +192,7 @@ auto ccpm::cca::free(
 	{
 		if ( (*it)->contains(ptr_) )
 		{
-			(*it)->deallocate(ptr_, bytes_);
+			(*it)->deallocate(_persist, ptr_, bytes_);
 			_last_top_free = it - _top.begin();
 			return ptr_ == nullptr ? S_OK : E_FAIL;
 		}
@@ -230,7 +231,7 @@ void ccpm::cca::set_root(
   if(_top.size() == 0)
     throw std::runtime_error("unexpected empty top vector");
   auto& first_top = _top[0];
-  first_top->set_root(root);
+  first_top->set_root(root, _persist);
 }
 
 auto ccpm::cca::get_root() const -> byte_span

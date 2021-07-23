@@ -95,7 +95,6 @@ public:
   void operator()(Connection_handler::buffer_t *iob) { _h->free_buffer(iob); }
 };
 
-
 struct memory_registered {
 private:
 	common::moveable_ptr<void> _desc;
@@ -111,6 +110,7 @@ public:
 		, _rmd( desc_ ? nullptr : rmd_)
 		, _h(_rmd ? _rmd->register_direct_memory(range_.first, range_.length()) : IMCAS::MEMORY_HANDLE_NONE)
 	{
+		TM_SCOPE()
 	}
 
 	memory_registered(Registrar_memory_direct * rmd_,
@@ -236,7 +236,7 @@ private:
   std::uint64_t                _addr;
 
 public:
-  async_buffer_set_get_locate(unsigned debug_level_,
+  async_buffer_set_get_locate(TM_ACTUAL unsigned debug_level_,
                               Registrar_memory_direct *rmd_,
                               iob_ptr &&               iobrd_,
                               iob_ptr &&               iobs_,
@@ -264,6 +264,7 @@ public:
     _v{::iovec{_value, _value_len}},
     _addr(addr_)
   {
+    TM_SCOPE()
     CPLOG(2, "%s: iobrd %p iobs2 %p iobr2 %p"
           , __func__
           , common::p_fmt(&*_iobrd)
@@ -364,7 +365,7 @@ private:
   std::uint64_t                _addr;
 
 public:
-  async_buffer_set_put_locate(unsigned                 debug_level_,
+  async_buffer_set_put_locate(TM_ACTUAL unsigned                 debug_level_,
                               Registrar_memory_direct *rmd_,
                               iob_ptr &&               iobs_,
                               iob_ptr &&               iobr_,
@@ -546,7 +547,7 @@ private:
   std::vector<locate_element>::const_iterator _addr_cursor;
 
 public:
-  async_buffer_set_get_direct_offset(unsigned                 debug_level_,
+  async_buffer_set_get_direct_offset(TM_ACTUAL unsigned                 debug_level_,
                                      Registrar_memory_direct *rmd_,
                                      iob_ptr &&               iobs_,
                                      iob_ptr &&               iobr_,
@@ -729,7 +730,7 @@ private:
   std::vector<locate_element>::const_iterator _addr_cursor;
 
 public:
-  async_buffer_set_put_direct_offset(unsigned                 debug_level_,
+  async_buffer_set_put_direct_offset(TM_ACTUAL unsigned                 debug_level_,
                                      Registrar_memory_direct *rmd_,
                                      iob_ptr &&               iobs_,
                                      iob_ptr &&               iobr_,
@@ -898,9 +899,10 @@ public:
 
 Connection_handler::Connection_handler(const unsigned              debug_level,
                                        Connection_base::Transport *connection,
+                                       Connection_base::buffer_manager &bm_,
                                        const unsigned              patience,
-                                       const std::string           other)
-  : Connection_base(debug_level, connection, patience),
+                                       const common::string_view   other)
+  : Connection_base(debug_level, connection, bm_, patience),
 #ifdef THREAD_SAFE_CLIENT
     _api_lock{},
 #endif
@@ -921,10 +923,14 @@ Connection_handler::Connection_handler(const unsigned              debug_level,
   if(::getenv(ENVIRONMENT_VARIABLE_FORCE_DIRECT))
     _force_direct = true;
 
-  if(!other.empty()) {
+  if(other.data()) {
     try {
       rapidjson::Document doc;
-      doc.Parse(other.c_str());
+      doc.Parse(other.data());
+      if ( doc.HasParseError() )
+      {
+        throw std::domain_error{std::string{"JSON parse error \""} + rapidjson::GetParseError_En(doc.GetParseError()) + "\" at " + std::to_string(doc.GetErrorOffset())};
+      }
       auto security = doc.FindMember("security");
 
       /* set security options */
@@ -1246,6 +1252,7 @@ status_t Connection_handler::put(const pool_t       pool,
                                  const size_t       value_len,
                                  const unsigned int flags)
 {
+  TM_ROOT();
   API_LOCK();
 
   const auto iobs = make_iob_ptr_send();
@@ -1274,7 +1281,10 @@ status_t Connection_handler::put(const pool_t       pool,
 
     post_recv(&*iobr);
     sync_send(&*iobs, msg, __func__); /* this will clean up iobs */
-    wait_for_completion(&*iobr);
+    {
+      TM_SCOPE(wait_recv)
+      wait_for_completion(&*iobr);
+    }
 
     const auto response_msg = msg_recv<const mcas::protocol::Message_IO_response>(&*iobr, __func__);
 
@@ -1334,7 +1344,7 @@ namespace
   }
 }
 
-IMCAS::async_handle_t Connection_handler::put_locate_async(const pool_t                        pool,
+IMCAS::async_handle_t Connection_handler::put_locate_async(TM_ACTUAL const pool_t                        pool,
                                                            const void *                        key,
                                                            const size_t                        key_len,
                                                            const gsl::span<const common::const_byte_span> values,
@@ -1342,6 +1352,7 @@ IMCAS::async_handle_t Connection_handler::put_locate_async(const pool_t         
                                                            gsl::span<const component::IKVStore::memory_handle_t> mem_handles_,
                                                            const unsigned                      flags)
 {
+  TM_SCOPE()
   auto iobr = make_iob_ptr_recv();
   auto iobs = make_iob_ptr_send();
 
@@ -1364,7 +1375,7 @@ IMCAS::async_handle_t Connection_handler::put_locate_async(const pool_t         
   return
     static_cast<IMCAS::async_handle_t>(
       new async_buffer_set_put_locate(
-        debug_level()
+        TM_REF debug_level()
         , rmd_
         , std::move(iobs)
         , std::move(iobr)
@@ -1385,6 +1396,7 @@ IMCAS::async_handle_t Connection_handler::get_direct_offset_async(const pool_t  
                                                                   component::Registrar_memory_direct *rmd_,
                                                                   void *const                         desc_)
 {
+  TM_ROOT()
   auto iobr = make_iob_ptr_recv();
   auto iobs = make_iob_ptr_send();
 
@@ -1403,7 +1415,7 @@ IMCAS::async_handle_t Connection_handler::get_direct_offset_async(const pool_t  
    */
   return
     static_cast<IMCAS::async_handle_t>(new async_buffer_set_get_direct_offset(
-                                                                                                         debug_level(), rmd_, std::move(iobs), std::move(iobr), iob_ptr(nullptr, this), make_iob_ptr_send(),
+                                                                                                         TM_REF debug_level(), rmd_, std::move(iobs), std::move(iobr), iob_ptr(nullptr, this), make_iob_ptr_send(),
                                                                                                          make_iob_ptr_recv(), pool_, auth_id(), offset_, buffer_, len_, desc_));
 }
 
@@ -1414,6 +1426,7 @@ IMCAS::async_handle_t Connection_handler::put_direct_offset_async(const pool_t  
                                                                   component::Registrar_memory_direct *rmd_,
                                                                   void *const                         desc_)
 {
+  TM_ROOT()
   auto iobr = make_iob_ptr_recv();
   auto iobs = make_iob_ptr_send();
 
@@ -1431,7 +1444,7 @@ IMCAS::async_handle_t Connection_handler::put_direct_offset_async(const pool_t  
    * request recv RELEASE response
    */
   return static_cast<IMCAS::async_handle_t>
-    (new async_buffer_set_put_direct_offset(debug_level(),
+    (new async_buffer_set_put_direct_offset(TM_REF debug_level(),
                                                                          rmd_,
                                                                          std::move(iobs),
                                                                          std::move(iobr),
@@ -1447,7 +1460,7 @@ IMCAS::async_handle_t Connection_handler::put_direct_offset_async(const pool_t  
 }
 
 IMCAS::async_handle_t
-Connection_handler::get_locate_async(const pool_t                        pool,
+Connection_handler::get_locate_async(TM_ACTUAL const pool_t                        pool,
                                      const void *                        key,
                                      const size_t                        key_len,
                                      void *const                         value,
@@ -1456,6 +1469,7 @@ Connection_handler::get_locate_async(const pool_t                        pool,
                                      void *const                         desc_,
                                      const unsigned                      flags)
 {
+  TM_SCOPE()
   auto iobr = make_iob_ptr_recv();
   auto iobs = make_iob_ptr_send();
   const auto buffer_len = value_len;
@@ -1464,15 +1478,24 @@ Connection_handler::get_locate_async(const pool_t                        pool,
   const auto msg = new (iobs->base())
     protocol::Message_IO_request(iobs->length(), auth_id(), request_id(), pool, protocol::OP_GET_LOCATE, key, key_len, value_len, flags);
   
+  {
+  TM_SCOPE(1)
   iobs->set_length(msg->msg_len());
 
   post_recv(&*iobr);
   post_send(iobs->iov, iobs->iov + 1, iobs->desc, &*iobs, msg, __func__);
 
+  {
+  TM_SCOPE(wait_send)
   wait_for_completion(&*iobs);
+  }
   iobs.reset(nullptr);
 
+  {
+  TM_SCOPE(wait_recv)
   wait_for_completion(&*iobr);
+  }
+  }
   const auto response_msg = msg_recv<const mcas::protocol::Message_IO_response>(&*iobr, "ASYNC GET_LOCATE");
   auto status = response_msg->get_status();
   if (status != S_OK) {
@@ -1485,6 +1508,8 @@ Connection_handler::get_locate_async(const pool_t                        pool,
   iobs.reset(nullptr);
   auto transfer_len = std::min(buffer_len, value_len);
 
+  {
+  TM_SCOPE(2)
   /*
    * The entire get_locate protocol involves five completions at the client:
    *   send GET_LOCATE request
@@ -1493,7 +1518,7 @@ Connection_handler::get_locate_async(const pool_t                        pool,
    *   send GET_RELEASE request
    *   recv GET_RELEASE response
    */
-  return static_cast<IMCAS::async_handle_t>(new async_buffer_set_get_locate(debug_level(),
+  return static_cast<IMCAS::async_handle_t>(new async_buffer_set_get_locate(TM_REF debug_level(),
                                                                                                                  rmd_,
                                                                                                                  make_iob_ptr_read(),
                                                                                                                  make_iob_ptr_send(),
@@ -1506,6 +1531,7 @@ Connection_handler::get_locate_async(const pool_t                        pool,
                                                                                                                  desc_,
                                                                                                                  addr,
                                                                                                                  memory_key));
+  }
 }
 
 status_t Connection_handler::put_direct(pool_t                               pool_,
@@ -1516,9 +1542,11 @@ status_t Connection_handler::put_direct(pool_t                               poo
                       gsl::span<const component::IMCAS::memory_handle_t> handles_,
                       unsigned int                         flags_)
 {
+  TM_ROOT()
   component::IMCAS::async_handle_t async_handle = component::IMCAS::ASYNC_HANDLE_INIT;
   auto status = async_put_direct(pool_, key_, key_len_, values_, async_handle, rmd_, handles_, flags_);
   if (status == S_OK) {
+    TM_SCOPE(spin)
     do {
       status = check_async_completion(async_handle);
     } while (status == E_BUSY);
@@ -1586,6 +1614,7 @@ status_t Connection_handler::async_put_direct(const IMCAS::pool_t               
                                               const gsl::span<const component::IKVStore::memory_handle_t> mem_handles_,
                                               const unsigned int                         flags_)
 {
+  TM_ROOT()
   API_LOCK();
 
   assert(_max_message_size);
@@ -1635,14 +1664,13 @@ status_t Connection_handler::async_put_direct(const IMCAS::pool_t               
       out_async_handle_ = new async_buffer_set_simple(debug_level(), std::move(iobs), std::move(iobr));
     }
     else
-      {
+    {
         /* for large puts, where the receiver will not have
          * sufficient buffer space, we use put locate (DMA write) protocol
          */
-        out_async_handle_ = put_locate_async(
-                                             pool_, key_, key_len_, values_, rmd_,
+        out_async_handle_ = put_locate_async(TM_REF pool_, key_, key_len_, values_, rmd_,
                                              mem_handles_, flags_);
-      }
+    }
     return S_OK;
   }
   catch (const Exception &e) {
@@ -1659,7 +1687,7 @@ status_t Connection_handler::async_put_direct(const IMCAS::pool_t               
   }
 }
 
-status_t Connection_handler::async_get_direct(const IMCAS::pool_t                        pool_,
+status_t Connection_handler::async_get_direct(TM_ACTUAL const IMCAS::pool_t                        pool_,
                                               const void *const                          key_,
                                               const size_t                               key_len_,
                                               void *const                                value_,
@@ -1669,6 +1697,7 @@ status_t Connection_handler::async_get_direct(const IMCAS::pool_t               
                                               const component::IKVStore::memory_handle_t mem_handle_,
                                               const unsigned int                         flags_)
 {
+  TM_SCOPE()
   API_LOCK();
 
   if (value_len_ && !value_) {
@@ -1687,7 +1716,7 @@ status_t Connection_handler::async_get_direct(const IMCAS::pool_t               
     auto iobr = make_iob_ptr_recv();
     auto iobs = make_iob_ptr_send();
 
-    out_async_handle_ = get_locate_async(pool_, key_, key_len_, value_, value_len_, rmd_,
+    out_async_handle_ = get_locate_async(TM_REF pool_, key_, key_len_, value_, value_len_, rmd_,
                                          mem_handle_ == IKVStore::HANDLE_NONE ? nullptr : static_cast<buffer_base *>(mem_handle_)->get_desc(), flags_);
     return S_OK;
   }
@@ -1708,7 +1737,6 @@ status_t Connection_handler::async_get_direct(const IMCAS::pool_t               
 status_t Connection_handler::check_async_completion(IMCAS::async_handle_t &handle)
 {
   API_LOCK();
-
   auto bptrs = static_cast<async_buffer_set_t *>(handle);
   assert(bptrs);
 
@@ -1741,6 +1769,7 @@ status_t Connection_handler::check_async_completion(IMCAS::async_handle_t &handl
 
 status_t Connection_handler::get(const pool_t pool, const std::string &key, std::string &value)
 {
+  TM_ROOT()
   API_LOCK();
 
   if (debug_level() > 1) {
@@ -1794,6 +1823,7 @@ status_t Connection_handler::get(const pool_t pool, const std::string &key, std:
 
   status_t Connection_handler::get(const pool_t pool, const std::string &key, void *&value, size_t &value_len)
   {
+    TM_ROOT()
     API_LOCK();
 
     if (debug_level() > 1) {
@@ -1823,7 +1853,10 @@ status_t Connection_handler::get(const pool_t pool, const std::string &key, std:
 
       post_recv(&*iobr);
       sync_inject_send(&*iobs, msg, __func__);
-      wait_for_completion(&*iobr); /* TODO; could we issue the recv and send together? */
+      {
+        TM_SCOPE(wait_recv)
+        wait_for_completion(&*iobr); /* TODO; could we issue the recv and send together? */
+      }
 
       const auto response_msg = msg_recv<const mcas::protocol::Message_IO_response>(&*iobr, __func__);
 
@@ -1851,14 +1884,18 @@ status_t Connection_handler::get(const pool_t pool, const std::string &key, std:
         CPLOG(1, "%s Received value from two stage get", __func__);
       }
       else {
+	TM_SCOPE(alloc)
         /* copy off value from IO buffer */
         value = ::malloc(response_msg->data_length() + 1);
         if (value == nullptr) {
           throw std::bad_alloc();
         }
+	{
+          TM_SCOPE(copy)
         value_len = response_msg->data_length();
         std::memcpy(value, response_msg->data(), response_msg->data_length());
         static_cast<char *>(value)[response_msg->data_length()] = '\0';
+	}
       }
 
       status = response_msg->get_status();
@@ -1883,10 +1920,12 @@ status_t Connection_handler::get(const pool_t pool, const std::string &key, std:
                                           component::Registrar_memory_direct *const rmd_,
                                           const IMCAS::memory_handle_t              mem_handle_)
   {
+    TM_ROOT()
     component::IMCAS::async_handle_t async_handle = component::IMCAS::ASYNC_HANDLE_INIT;
 
-    auto status = async_get_direct(pool_, key_, key_len_, value_, value_len_, async_handle, rmd_, mem_handle_, 0);
+    auto status = async_get_direct(TM_REF pool_, key_, key_len_, value_, value_len_, async_handle, rmd_, mem_handle_, 0);
     if (status == S_OK) {
+      TM_SCOPE(spin)
       do {
         status = check_async_completion(async_handle);
       } while (status == E_BUSY);
@@ -1901,10 +1940,12 @@ status_t Connection_handler::get(const pool_t pool, const std::string &key, std:
                                                  component::Registrar_memory_direct *const rmd_,
                                                  const component::IMCAS::memory_handle_t   mem_handle_)
   {
+    TM_ROOT()
     component::IMCAS::async_handle_t async_handle = component::IMCAS::ASYNC_HANDLE_INIT;
 
     auto status = async_get_direct_offset(pool_, offset_, length_, buffer_, async_handle, rmd_, mem_handle_);
     if (status == S_OK) {
+      TM_SCOPE(spin)
       do {
         status = check_async_completion(async_handle);
       } while (status == E_BUSY);
@@ -1919,10 +1960,12 @@ status_t Connection_handler::get(const pool_t pool, const std::string &key, std:
                                                  component::Registrar_memory_direct *const rmd_,
                                                  const component::IMCAS::memory_handle_t   mem_handle_)
   {
+    TM_ROOT()
     component::IMCAS::async_handle_t async_handle = component::IMCAS::ASYNC_HANDLE_INIT;
 
     auto status = async_put_direct_offset(pool_, offset_, size_, buffer_, async_handle, rmd_, mem_handle_);
     if (status == S_OK) {
+      TM_SCOPE(spin)
       do {
         status = check_async_completion(async_handle);
       } while (status == E_BUSY);

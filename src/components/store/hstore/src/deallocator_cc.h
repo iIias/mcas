@@ -1,5 +1,5 @@
 /*
-   Copyright [2017-2020] [IBM Corporation]
+   Copyright [2017-2021] [IBM Corporation]
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
    You may obtain a copy of the License at
@@ -15,35 +15,30 @@
 #ifndef MCAS_HSTORE_DEALLOCATOR_CC_H
 #define MCAS_HSTORE_DEALLOCATOR_CC_H
 
+#include "hstore_config.h"
 #include "heap_access.h"
-#include "heap_cc.h"
 #include "persistent.h"
 #include "persister_cc.h"
 
 #include <cstddef> /* size_t, ptrdiff_t */
 #include <type_traits> /* true_type, false_type */
 
-template <typename T, typename Persister>
+template <typename T, typename Heap, typename Persister>
 	struct deallocator_cc;
 
-template <>
-	struct deallocator_cc<void, persister>
+template <typename Heap, typename Persister>
+	struct deallocator_cc<void, Heap, Persister>
 	{
 		using value_type = void;
 	};
 
-template <typename Persister>
-	struct deallocator_cc<void, Persister>
-	{
-		using value_type = void;
-	};
-
-template <typename T, typename Persister = persister>
+template <typename T, typename Heap, typename Persister = persister>
 	struct deallocator_cc
 		: public Persister
 	{
+		using heap_type = Heap;
 	private:
-		heap_access<heap_cc> _pool;
+		heap_access<heap_type> _pool;
 	public:
 		using value_type = T;
 		using persister_type = Persister;
@@ -52,7 +47,7 @@ template <typename T, typename Persister = persister>
 		using propagate_on_container_move_assignment = std::true_type;
 		using is_always_equal = std::false_type;
 
-		explicit deallocator_cc(const heap_access<heap_cc> &pool_, Persister p_ = Persister()) noexcept
+		explicit deallocator_cc(const heap_access<heap_type> &pool_, Persister p_ = Persister()) noexcept
 			: Persister(p_)
 			, _pool(pool_)
 		{}
@@ -60,7 +55,7 @@ template <typename T, typename Persister = persister>
 		explicit deallocator_cc(const deallocator_cc &) noexcept = default;
 
 		template <typename U, typename P>
-			explicit deallocator_cc(const deallocator_cc<U, P> &d_) noexcept
+			explicit deallocator_cc(const deallocator_cc<U, Heap, P> &d_) noexcept
 				: deallocator_cc(d_.pool())
 			{}
 

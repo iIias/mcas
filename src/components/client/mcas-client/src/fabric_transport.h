@@ -39,15 +39,17 @@ class Fabric_transport : protected common::log_source {
 
  public:
   using Transport = component::IFabric_client;
+  using Registrar = component::IFabric_memory_control;
+  using buffer_manager = Buffer_manager<Registrar>;
   /* Buffer manager defined in server/mcas/src/ */
-  using buffer_base     = Buffer_manager<Transport>::buffer_base;
-  using buffer_t        = Buffer_manager<Transport>::buffer_internal;
+  using buffer_base     = Buffer_manager<Registrar>::buffer_base;
+  using buffer_t        = Buffer_manager<Registrar>::buffer_internal;
   using buffer_external = common::destructible<buffer_base>;
   using memory_region_t = component::IFabric_memory_region *;
 
   double cycles_per_second;
 
-  explicit Fabric_transport(unsigned debug_level_, component::IFabric_client *fabric_connection, unsigned patience_);
+  explicit Fabric_transport(unsigned debug_level_, component::IFabric_client *fabric_connection, Buffer_manager<component::IFabric_memory_control> &bm, unsigned patience);
 
   Fabric_transport(const Fabric_transport &) = delete;
   Fabric_transport &operator=(const Fabric_transport &) = delete;
@@ -168,15 +170,6 @@ class Fabric_transport : protected common::log_source {
     post_send(iob->iov, iob->iov + 1, iob->desc, iob);
   }
 
-#if 0
-  void post_send(buffer_t *iob, buffer_external *iob_extra)
-  {
-    iovec v[2]   = {iob->iov[0], iob_extra->iov[0]};
-    void *desc[] = {iob->desc[0], iob_extra->desc[0]};
-    post_send(&v[0], &v[2], desc, iob);
-  }
-#endif
-
   /**
    * Post receive then wait for completion before returning.
    * Use after post_send may lead to poor performance if the response
@@ -208,17 +201,6 @@ class Fabric_transport : protected common::log_source {
   {
     _transport->post_write(iov, desc, remote_addr, remote_key, context);
   }
-#if 0
-  void post_write(const ::iovec *first,
-                  const ::iovec *last,
-                  void **        desc,
-                  uint64_t       remote_addr,
-                  std::uint64_t  remote_key,
-                  void *         context)
-  {
-    _transport->post_write(first, last, desc, remote_addr, remote_key, context);
-  }
-#endif
 
   /**
    * Post read (DMA)
@@ -258,7 +240,7 @@ class Fabric_transport : protected common::log_source {
  protected:
   Transport *               _transport;
   size_t                    _max_inject_size;
-  Buffer_manager<Transport> _bm;          /*< IO buffer manager */
+  Buffer_manager<Registrar> &_bm;       /*< IO buffer manager */
   unsigned                  _patience;  // in seconds
 };
 

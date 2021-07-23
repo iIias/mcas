@@ -15,7 +15,7 @@ using namespace component;
 
 namespace global
 {
-unsigned debug_level;
+extern unsigned debug_level;
 }
 
 typedef struct {
@@ -79,7 +79,7 @@ static int Session_init(Session *self, PyObject *args, PyObject *kwds)
 
   if (! PyArg_ParseTupleAndKeywords(args,
                                     kwds,
-                                    "s|issi",
+                                    "s|iszi",
                                     const_cast<char**>(kwlist),
                                     &p_ip,
                                     &port,

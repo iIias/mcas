@@ -1,5 +1,5 @@
 /*
-  Copyright [2017-2020] [IBM Corporation]
+  Copyright [2017-2021] [IBM Corporation]
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
   You may obtain a copy of the License at
@@ -16,6 +16,7 @@
 #include <api/components.h>
 #include <api/kvindex_itf.h>
 #include <common/dump_utils.h>
+#include <common/env.h>
 #include <common/profiler.h>
 #include <common/utils.h>
 #include <common/str_utils.h>
@@ -30,18 +31,7 @@
 #include <boost/numeric/conversion/cast.hpp>
 
 #include "resource_unavailable.h"
-
-#ifdef HAS_PROFILER
-#include <gperftools/profiler.h>
-#else
-int ProfilerStart(const char *)
-{
-  PLOG("%s", "profile requested but profiler not linked");
-  return false;
-}
-void ProfilerStop() {}
-void ProfilerFlush() {}
-#endif
+#include "env.h"
 
 #include <sys/types.h> /* getpid */
 #include <unistd.h>
@@ -118,6 +108,17 @@ namespace global
 unsigned debug_level = 0;
 }
 
+static std::string default_mm_plugin(const Config_file& /*config_file*/,
+                                     const std::string& backend)
+{
+  if(backend == "mapstore") return DEFAULT_MAPSTORE_MM_PLUGIN_PATH;
+  else if(backend == "hstore") return DEFAULT_HSTORE_MR_MM_PLUGIN_PATH;
+  else if(backend == "hstore-mr") return DEFAULT_HSTORE_MR_MM_PLUGIN_PATH;
+  else if(backend == "hstore-cc") return DEFAULT_HSTORE_MC_MM_PLUGIN_PATH;
+  else if(backend == "hstore-mc") return DEFAULT_HSTORE_MC_MM_PLUGIN_PATH;
+  else throw Logic_exception("invalid store: %s", backend.c_str());
+}
+
 Shard::Shard(const Config_file &config_file,
              const unsigned     shard_index,
              const std::string &dax_config,
@@ -172,12 +173,13 @@ Shard::Shard(const Config_file &config_file,
               debug_level_),
     _cluster_signal_queue(),
     _backend(config_file.get_shard_required(config::default_backend, shard_index)),
+    _mm_plugin_path(default_mm_plugin(config_file, _backend)),
     _dax_config(dax_config),
     _thread(std::async(std::launch::async,
                        &Shard::thread_entry,
                        this,
                        _backend,
-                       config_file.get_shard_required("index", shard_index),
+                       _mm_plugin_path,
                        dax_config,
                        debug_level(),
                        config_file.get_shard_ado_cores(shard_index),
@@ -187,9 +189,9 @@ Shard::Shard(const Config_file &config_file,
 {
 }
 
-void Shard::thread_entry(const std::string &backend,
-                         const std::string &index,
-                         const std::string &dax_config,
+void Shard::thread_entry(const std::string& backend,
+                         const std::string& mm_plugin_path,
+                         const std::string& dax_config,
                          const unsigned     debug_level,
                          const std::string  ado_cores,
                          const float        ado_core_num,
@@ -211,7 +213,9 @@ void Shard::thread_entry(const std::string &backend,
 
   try {
     try {
-      initialize_components(backend, index, dax_config, debug_level, ado_cores, ado_core_num);
+      initialize_components(backend,
+                            mm_plugin_path,
+                            dax_config, debug_level, ado_cores, ado_core_num);
     }
     catch (const General_exception &e) {
       PERR("Shard component initialization failed: %s.", e.cause());
@@ -239,11 +243,11 @@ void Shard::thread_entry(const std::string &backend,
 }
 
 void Shard::initialize_components(const std::string &backend,
-                                  const std::string &,  // index
+                                  const std::string &mm_plugin_path,
                                   const std::string &dax_config,
-                                  unsigned,  // debug_level
+                                  unsigned debug_level,
                                   const std::string ado_cores,
-                                  float             ado_core_num)
+                                  float ado_core_num)
 {
   using namespace component;
 
@@ -253,10 +257,8 @@ void Shard::initialize_components(const std::string &backend,
 
     if (backend == "mapstore")
       comp = load_component("libcomponent-mapstore.so", mapstore_factory);
-    else if (backend == "hstore")
-      comp = load_component("libcomponent-hstore.so", hstore_factory);
-    else if (backend == "hstore-cc")
-      comp = load_component("libcomponent-hstore-cc.so", hstore_factory);
+    else if ( backend.rfind("hstore", 0) == 0 )
+      comp = load_component(("libcomponent-" + backend + ".so").c_str(), hstore_factory);
     else
       throw General_exception("unrecognized backend (%s)", backend.c_str());
 
@@ -267,19 +269,23 @@ void Shard::initialize_components(const std::string &backend,
     auto fact = make_itf_ref(static_cast<IKVStore_factory *>(comp->query_interface(IKVStore_factory::iid())));
     assert(fact);
 
-    if (backend == "hstore" || backend == "hstore-cc") {
-      if (dax_config.empty()) throw General_exception("hstore backend requires dax configuration");
+    if ( backend.rfind("hstore", 0) == 0 )
+    {
+      if (dax_config.empty()) throw General_exception("backend \"%s\" requires dax configuration", backend.c_str());
 
-      _i_kvstore.reset(fact->create(0
-                                    , {
-                                       {+component::IKVStore_factory::k_debug, std::to_string(debug_level())}
-                                       , {+component::IKVStore_factory::k_dax_config, dax_config}
+      _i_kvstore.reset(fact->create(debug_level,
+                                    {
+                                     {+component::IKVStore_factory::k_debug, std::to_string(debug_level)},
+                                     {+component::IKVStore_factory::k_dax_config, dax_config},
+                                     {+component::IKVStore_factory::k_mm_plugin_path, mm_plugin_path},
                                     }
-                                    )
-                       );
+                                    ));
     }
-    else {
-      _i_kvstore.reset(fact->create(0, {}));
+    else { /* mapstore */
+      _i_kvstore.reset(fact->create(debug_level,
+                                    {
+                                     {+component::IKVStore_factory::k_mm_plugin_path, mm_plugin_path}
+                                    }));
     }
   }
 
@@ -287,10 +293,11 @@ void Shard::initialize_components(const std::string &backend,
   {
     IBase *comp = load_component("libcomponent-adomgrproxy.so", ado_manager_proxy_factory);
     if (comp) {
-      auto fact = make_itf_ref(static_cast<IADO_manager_proxy_factory *>(comp->query_interface(IADO_manager_proxy_factory::iid())));
+      auto fact = make_itf_ref(static_cast<IADO_manager_proxy_factory *>
+                               (comp->query_interface(IADO_manager_proxy_factory::iid())));
       assert(fact);
 
-      _i_ado_mgr.reset(fact->create(debug_level(), _core, ado_cores, ado_core_num));
+      _i_ado_mgr.reset(fact->create(debug_level, _core, ado_cores, ado_core_num));
 
       if (_i_ado_mgr == nullptr)
         throw General_exception("Instantiation of ADO manager failed unexpectedly.");
@@ -676,9 +683,6 @@ void Shard::process_message_pool_request(Connection_handler *handler,
             for (auto &r : regions.address_map()) {
               CPLOG(2, "region: %p %lu MiB", ::base(r), REDUCE_MB(::size(r)));
               /* pre-register memory region with RDMA */
-#if 0
-              handler->ondemand_register(r.iov_base, r.iov_len);
-#endif
               handler->ondemand_register(common::make_const_byte_span(r));
             }
           }
@@ -891,7 +895,8 @@ void Shard::release_locked_value_shared(const void *target)
     throw Logic_exception("%s: bad target; value never locked? (%p)", __func__, target);
 
   if (i->second.count == 1) {
-    _i_kvstore->unlock(i->second.pool, i->second.key, IKVStore::UNLOCK_FLAGS_FLUSH);
+    static bool do_flush = common::env_value<bool>(flush_enable_key, true);
+    _i_kvstore->unlock(i->second.pool, i->second.key, do_flush ? IKVStore::UNLOCK_FLAGS_FLUSH : 0);
     _locked_values_shared.erase(i);
   }
   else {
@@ -906,7 +911,8 @@ void Shard::release_locked_value_exclusive(const void *target)
     throw Logic_exception("%s bad target; value never locked? (%p)", __func__, target);
 
   if (i->second.count == 1) {
-    _i_kvstore->unlock(i->second.pool, i->second.key, IKVStore::UNLOCK_FLAGS_FLUSH);
+    static bool do_flush = common::env_value<bool>(flush_enable_key, true);
+    _i_kvstore->unlock(i->second.pool, i->second.key, do_flush ? IKVStore::UNLOCK_FLAGS_FLUSH : 0);
     _locked_values_exclusive.erase(i);
   }
   else {
@@ -976,6 +982,7 @@ bool is_locked(status_t rc)
     return false;
   case IKVStore::E_TOO_LARGE:
     PWRN("%s failed to lock value: E_TOO_LARGE", __func__);
+    dump_backtrace();
     return false;
   case E_NOT_SUPPORTED:
     PWRN("%s failed to lock value: E_NOT_SUPPORTED", __func__);
@@ -1001,7 +1008,8 @@ void Shard::release_pending_rename(const void *target)
     /* we do the lock/unlock first, because there might not be a prior
        object so this will create one on demand. */
     {
-      if (! is_locked(_i_kvstore->lock(info.pool, info.to, IKVStore::STORE_LOCK_WRITE, value, value_len, keyh)))
+      size_t alignment = 0;
+      if (! is_locked(_i_kvstore->lock(info.pool, info.to, IKVStore::STORE_LOCK_WRITE, value, value_len, alignment, keyh)))
         throw Logic_exception("%s lock failed", __func__);
     }
     if (_i_kvstore->unlock(info.pool, keyh) != S_OK) /* no flush needed */
@@ -1069,7 +1077,8 @@ void Shard::io_response_get_locate(Connection_handler *handler,
   component::IKVStore::key_t key_handle;
   void *                     target     = nullptr;
   size_t                     target_len = 0;
-  status_t rc = _i_kvstore->lock(msg->pool_id(), k, IKVStore::STORE_LOCK_READ, target, target_len, key_handle);
+  size_t                     alignment = 0;
+  status_t rc = _i_kvstore->lock(msg->pool_id(), k, IKVStore::STORE_LOCK_READ, target, target_len, alignment, key_handle);
 
   if ( ! is_locked(rc) ) { status = E_FAIL; }
 
@@ -1183,8 +1192,9 @@ void Shard::io_response_put_advance(Connection_handler *handler,
     component::IKVStore::key_t key_handle;
     void *                     target     = nullptr;
     size_t                     target_len = msg->get_value_len();
+    size_t                     alignment = 0;
     assert(target_len > 0);
-    status_t rcx = _i_kvstore->lock(msg->pool_id(), k, IKVStore::STORE_LOCK_WRITE, target, target_len, key_handle);
+    status_t rcx = _i_kvstore->lock(msg->pool_id(), k, IKVStore::STORE_LOCK_WRITE, target, target_len, alignment, key_handle);
 
     if ( ! is_locked(rcx) || key_handle == component::IKVStore::KEY_NONE) {
       PWRN("PUT_ADVANCE failed to lock value");
@@ -1270,10 +1280,11 @@ void Shard::io_response_put_locate(Connection_handler *handler,
     component::IKVStore::key_t key_handle;
     void *                     target     = nullptr;
     size_t                     target_len = msg->get_value_len();
+    size_t                     alignment = 0;
     assert(target_len > 0);
 
     /* The initiative to unlock lies with the caller if status returns S_OK, else it lies with us. */
-    status_t rc = _i_kvstore->lock(msg->pool_id(), k, IKVStore::STORE_LOCK_WRITE, target, target_len, key_handle);
+    status_t rc = _i_kvstore->lock(msg->pool_id(), k, IKVStore::STORE_LOCK_WRITE, target, target_len, alignment, key_handle);
 
     if ( ! is_locked(rc) ) { status = E_FAIL; }
 
@@ -1440,7 +1451,7 @@ void Shard::io_response_get(Connection_handler *handler, const protocol::Message
      * wasting the memcpy by consulting the client before running the
      * memcpy.)
      */
-    static constexpr std::size_t GET_DIRECT_THRESHOLD = KiB(8);
+    static constexpr std::size_t GET_DIRECT_THRESHOLD = KiB(128);
     static_assert(GET_DIRECT_THRESHOLD <= TWO_STAGE_THRESHOLD, "get_direct threshold must not exceed a single-message data size");
     std::string k = msg->skey();
 
@@ -1468,12 +1479,13 @@ void Shard::io_response_get(Connection_handler *handler, const protocol::Message
     ::iovec value_out{nullptr, 0};
 
     component::IKVStore::key_t key_handle;
-
+    size_t alignment = 0;
     status_t rc = _i_kvstore->lock(msg->pool_id(),
                                    k,
                                    IKVStore::STORE_LOCK_READ,
                                    value_out.iov_base,
                                    value_out.iov_len,
+                                   alignment,
                                    key_handle);
 
     if ( ! is_locked(rc) || key_handle == component::IKVStore::KEY_NONE) { /* key not found */
@@ -1757,8 +1769,8 @@ auto Shard::offset_to_sg_list(range<std::uint64_t> t,
   CPLOG(2, "initial begin_off 0x%" PRIx64 " end_off 0x%" PRIx64 " mr_low 0x%" PRIx64 " mr_high 0x%" PRIx64, begin_off,
         end_off, mr_low, mr_high);
 
-  /* The range from t_begin to t_end may be contained in discontigous memory.
-   * Build a scatter-gather list.
+  /* the range from t_begin to t_end may be contained in discontigous memory.
+   * build a scatter-gather list.
    */
   std::vector<protocol::Message_IO_response::locate_element> sg_list;
 
@@ -1819,7 +1831,11 @@ void Shard::io_response_locate(Connection_handler *handler, const protocol::Mess
     std::uint64_t key = 0;
     try
       {
-        memory_registered<Connection_base> mr(debug_level(), handler, reinterpret_cast<void *>(sgr.mr_low), sgr.mr_high - sgr.mr_low, 0,
+        memory_registered<Connection_base> mr(debug_level(),
+                                              handler,
+                                              reinterpret_cast<void *>(sgr.mr_low),
+                                              sgr.mr_high - sgr.mr_low,
+                                              0,
                                               0);
         key = mr.key();
         /* register deregister task for space */
@@ -1982,7 +1998,7 @@ void Shard::process_info_request(Connection_handler *handler, const protocol::Me
       response->set_value(v[0]);
     }
     else {
-      PWRN("_i_kvstore->get_attribute failed");
+      PWRN("_i_kvstore->get_attribute failed for value_len (key=%s)", key.c_str());
       response->set_value(0);
     }
     CPLOG(1, "Shard: INFO reqeust INFO_TYPE_VALUE_LEN rc=%d val=%lu", hr, response->value_numeric());
@@ -2004,7 +2020,8 @@ void Shard::process_info_request(Connection_handler *handler, const protocol::Me
         void *                     p     = nullptr;
         size_t                     p_len = 0;
         component::IKVStore::key_t key_handle;
-        status_t rc = _i_kvstore->lock(msg->pool_id(), key, component::IKVStore::STORE_LOCK_READ, p, p_len, key_handle);
+        size_t alignment = 0;
+        status_t rc = _i_kvstore->lock(msg->pool_id(), key, component::IKVStore::STORE_LOCK_READ, p, p_len, alignment, key_handle);
 
         if ( ! is_locked(rc) || key_handle == component::IKVStore::KEY_NONE) {
           response->set_status(E_FAIL);

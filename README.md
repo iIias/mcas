@@ -25,14 +25,6 @@ The key attributes of the solution are:
 * [More documentation](./info/index.md)
 
 
-## Run dependencies for your OS 
-
-``` bash
-cd deps
-./install-<Your-OS-Version>.sh
-cd ../
-``` 
-
 ## How to Build
 
 Check out source (for example public version):
@@ -47,6 +39,15 @@ cd mcas
 git submodule update --init --recursive
 ```
 
+
+## Run dependencies for your OS 
+
+``` bash
+cd deps
+./install-<Your-OS-Version>.sh
+cd ../
+``` 
+
 ### Configure
 
 Create build directory at root level.  We normally use `mcas/build` (The deadult build is in debug mode)
@@ -54,7 +55,7 @@ Create build directory at root level.  We normally use `mcas/build` (The deadult
 ```bash
 mkdir build
 cd build
-cmake -DBUILD_KERNEL_SUPPORT=ON -DFLATBUFFERS_BUILD_TESTS=0 -DTBB_BUILD_TESTS=0 -DBUILD_PYTHON_SUPPORT=1 -DCMAKE_BUILD_TYPE=Debug -DCMAKE_INSTALL_PREFIX:PATH=`pwd`/dist ..
+cmake -DBUILD_KERNEL_SUPPORT=ON -DBUILD_PYTHON_SUPPORT=ON -DBUILD_MPI_APPS=OFF -DCMAKE_BUILD_TYPE=Debug -DCMAKE_INSTALL_PREFIX:PATH=`pwd`/dist ..
 ```
 
 Or perform a Release build (which will be much faster):
@@ -62,7 +63,7 @@ Or perform a Release build (which will be much faster):
 ```bash
 mkdir build
 cd build
-cmake -DBUILD_KERNEL_SUPPORT=ON -DFLATBUFFERS_BUILD_TESTS=0 -DTBB_BUILD_TESTS=0 -DBUILD_PYTHON_SUPPORT=1 -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX:PATH=`pwd`/dist ..
+cmake -DBUILD_KERNEL_SUPPORT=ON -DBUILD_PYTHON_SUPPORT=ON -DBUILD_MPI_APPS=0 -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX:PATH=`pwd`/dist ..
 ```
 
 Sometimes we build with an alternate compiler:
@@ -70,7 +71,7 @@ Sometimes we build with an alternate compiler:
 ```bash
 mkdir clang
 cd clang
-cmake -DBUILD_KERNEL_SUPPORT=ON -DFLATBUFFERS_BUILD_TESTS=0 -DTBB_BUILD_TESTS=0 -DBUILD_PYTHON_SUPPORT=1 -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_INSTALL_PREFIX:PATH=`pwd`/dist ..
+cmake -DBUILD_KERNEL_SUPPORT=ON -DBUILD_PYTHON_SUPPORT=ON -DBUILD_MPI_APPS=0 -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_INSTALL_PREFIX:PATH=`pwd`/dist ..
 ```
 
 Or with code coverage:
@@ -78,7 +79,7 @@ Or with code coverage:
 ```bash
 mkdir coverage
 cd coverage
-cmake -DBUILD_KERNEL_SUPPORT=ON -DFLATBUFFERS_BUILD_TESTS=0 -DTBB_BUILD_TESTS=0 -DBUILD_PYTHON_SUPPORT=1 -DCMAKE_BUILD_TYPE=Debug -DCODE_COVERAGE=1 -DCMAKE_INSTALL_PREFIX:PATH=`pwd`/dist ..
+cmake -DBUILD_KERNEL_SUPPORT=ON -DBUILD_PYTHON_SUPPORT=ON -DCMAKE_BUILD_TYPE=Debug -DCODE_COVERAGE=1 -DCMAKE_INSTALL_PREFIX:PATH=`pwd`/dist ..
 ```
 
 ### One-time build
@@ -88,22 +89,49 @@ make bootstrap
 
 ### Normal build
 ```bash
-make -j
-make install 
+make -j install 
 ```
 
 
 ### Additional build options
 
-| Option               | Description             |
-|----------------------|-------------------------|
-| BUILD_KERNEL_SUPPORT | Build kernel support    |
-| BUILD_EXAMPLES_PMDK  | PMDK in ADO example     |
-| BUILD_RUST           | Rust-based dependencies |
+| Option                 | Description                         | Default |
+|------------------------|-------------------------------------|---------|
+| BUILD_MCAS_SERVER      | Build MCAS server                   | ON      | 
+| BUILD_MCAS_CLIENT      | Build MCAS client librariers        | ON      | 
+| BUILD_COMPONENT_CRYPTO | Build crypto support                | ON      |
+| BUILD_KERNEL_SUPPORT   | Build kernel support                | ON      |
+| BUILD_PYTHON_SUPPORT   | Build python APIs and personalities | ON      |
+| BUILD_EXAMPLES_PMDK    | PMDK in ADO example                 | OFF     |
+| BUILD_RUST             | Rust-based dependencies             | OFF     |
+| BUILD_MPI_APPS         | Build mcas-mpi-benchmark            | OFF     |
 
-### Build all for development
+### Build for PyMM only (fsdax version)
 
 ``` bash
-cmake -DBUILD_KERNEL_SUPPORT=ON -DBUILD_EXAMPLES_PMDK=ON -DBUILD_RUST=ON  -DFLATBUFFERS_BUILD_TESTS=0 -DTBB_BUILD_TESTS=0 -DBUILD_PYTHON_SUPPORT=1 -DCMAKE_BUILD_TYPE=Debug -DCMAKE_INSTALL_PREFIX:PATH=`pwd`/dist ..
+cmake -DBUILD_KERNEL_SUPPORT=OFF \
+-DBUILD_MCAS_SERVER=OFF \
+-DBUILD_MCAS_CLIENT=OFF \
+-DBUILD_EXAMPLES_PMDK=OFF \
+-DBUILD_RUST=OFF \
+-DBUILD_PYTHON_SUPPORT=ON \
+-DBUILD_MPI_APPS=OFF \
+-DCMAKE_BUILD_TYPE=Release \
+-DCMAKE_INSTALL_PREFIX:PATH=`pwd`/dist ..
 ```
+
+### Build all for development example
+
+``` bash
+cmake \
+-DBUILD_KERNEL_SUPPORT=ON \
+-DBUILD_EXAMPLES_PMDK=OFF \
+-DBUILD_RUST=ON \
+-DBUILD_PYTHON_SUPPORT=ON \
+-DBUILD_MPI_APPS=ON \
+-DCMAKE_BUILD_TYPE=Debug \
+-DCMAKE_INSTALL_PREFIX:PATH=`pwd`/dist ..
+```
+
+
 

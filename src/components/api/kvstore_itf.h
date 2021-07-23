@@ -1,5 +1,5 @@
 /*
-  Copyright [2017-2019] [IBM Corporation]
+  Copyright [2017-2021] [IBM Corporation]
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
   You may obtain a copy of the License at
@@ -15,6 +15,7 @@
 #define __API_KVSTORE_ITF__
 
 #include <api/components.h>
+#if 0
 #include <common/byte_span.h>
 #include <common/errors.h> /* ERROR_BASE */
 #include <common/time.h>
@@ -34,11 +35,13 @@ namespace nupm
 
 /* print format for the pool type */
 #define PRIxIKVSTORE_POOL_T PRIx64
+#else
+#include <api/kvstore.h>
+#include <common/string_view.h>
+#endif
 
 namespace component
 {
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-parameter"
 
 #define DECLARE_OPAQUE_TYPE(NAME) \
   struct Opaque_##NAME {          \
@@ -48,11 +51,14 @@ namespace component
 /**
  * Key-value interface for pluggable backend (e.g. mapstore, hstore, hstore-cc)
  */
-class IKVStore : public component::IBase {
+class IKVStore : public IBase,
+                 public KVStore
+{
  public:
   // clang-format off
   DECLARE_INTERFACE_UUID(0x62f4829f,0x0405,0x4c19,0x9898,0xa3,0xae,0x21,0x5a,0x3e,0xe8);
   // clang-format on
+#if 0
 
  private:
   DECLARE_OPAQUE_TYPE(lock_handle);
@@ -848,29 +854,36 @@ class IKVStore : public component::IBase {
    * @param arg Parameter for debug operation
    */
   virtual void debug(pool_t pool, unsigned cmd, uint64_t arg) = 0;
+#endif
 };
 
+
 class IKVStore_factory : public component::IBase {
+  using string_view = common::string_view;
  public:
   // clang-format off
   DECLARE_INTERFACE_UUID(0xface829f,0x0405,0x4c19,0x9898,0xa3,0xae,0x21,0x5a,0x3e,0xe8);
   // clang-format on
 
-  virtual IKVStore* create(const std::string& owner, const std::string& param)
+  virtual IKVStore* create(const std::string& owner, const std::string&)
   {
+    (void)owner;
     throw API_exception("IKVstore_factory::create(owner,param) not implemented");
   };
 
-  virtual IKVStore* create(const std::string& owner, const std::string& param, const std::string& param2)
+  virtual IKVStore* create(const std::string& owner, const std::string&, const std::string&)
   {
+    (void)owner;
     throw API_exception("IKVstore_factory::create(owner,param,param2) not implemented");
   }
 
-  virtual IKVStore* create(unsigned           debug_level,
-                           const std::string& owner,
-                           const std::string& param,
-                           const std::string& param2)
+  virtual IKVStore* create(unsigned debug_level,
+                           string_view owner,
+                           string_view,
+                           string_view)
   {
+    (void)debug_level;
+    (void)owner;
     throw API_exception("IKVstore_factory::create(debug_level,owner,param,param2) not implemented");
   }
 
@@ -887,15 +900,16 @@ class IKVStore_factory : public component::IBase {
   static constexpr const char *k_owner = "owner";
   static constexpr const char *k_name = "name";
   static constexpr const char *k_dax_config = "dax_config";
+  static constexpr const char *k_mm_plugin_path = "mm_plugin_path";
 
   /* this is the preferred create method - the others will be deprecated */
   virtual IKVStore* create(unsigned debug_level, const map_create& params)
   {
+    (void)debug_level;
+    (void)params;
     throw API_exception("IKVstore_factory::create(debug_level,param-map) not implemented");
   }
 };
-
-#pragma GCC diagnostic pop
 
 }  // namespace component
 #endif

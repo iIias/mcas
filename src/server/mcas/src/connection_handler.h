@@ -64,7 +64,12 @@ public:
         TICK_RESPONSE_CLOSE           = 0xFF,
   };
 
-private:
+private:  
+  /* adaptor point for different transports */
+  using Preconnection = component::IFabric_endpoint_unconnected_server;
+  using Connection = component::IFabric_server;
+  using Factory    = component::IFabric_server_factory;
+
   Connection_state    _state       = Connection_state::INITIAL;
   unsigned option_DEBUG = mcas::global::debug_level;
 
@@ -76,10 +81,6 @@ private:
   std::queue<buffer_t *>              _pending_msgs;
   std::queue<action_t>                _pending_actions;
   Pool_manager                        _pool_manager; /* per-connection */
-  
-  /* adaptor point for different transports */
-  using Connection = component::IFabric_server;
-  using Factory    = component::IFabric_server_factory;
 
   struct stats {
     uint64_t response_count;
@@ -171,7 +172,7 @@ public:
 
   explicit Connection_handler(unsigned debug_level,
                               gsl::not_null<Factory *> factory,
-                              gsl::not_null<Connection *> connection);
+                              std::unique_ptr<Preconnection> && preconnection);
 
   virtual ~Connection_handler();
 
@@ -283,7 +284,7 @@ public:
   template <typename MT>
   void msg_recv_log(const MT *m, const char *desc)
   {
-    msg_recv_log(1, m, desc);
+    msg_recv_log(2, m, desc);
   }
 
   template <typename MT>
@@ -295,7 +296,7 @@ public:
   template <typename MT>
   void msg_send_log(const MT *m, const char *desc)
   {
-    msg_send_log(1, m, desc);
+    msg_send_log(2, m, desc);
   }
 
   template <typename MT>

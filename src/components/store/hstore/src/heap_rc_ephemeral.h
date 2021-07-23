@@ -1,5 +1,5 @@
 /*
-   Copyright [2017-2020] [IBM Corporation]
+   Copyright [2017-2021] [IBM Corporation]
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
    You may obtain a copy of the License at
@@ -15,7 +15,8 @@
 #ifndef MCAS_HSTORE_HEAP_RC_EPHEMERAL_H
 #define MCAS_HSTORE_HEAP_RC_EPHEMERAL_H
 
-#include <common/logging.h>
+#include <common/logging.h> /* log_source */
+#include "injectee.h"
 
 #include "hstore_config.h"
 #include "histogram_log2.h"
@@ -27,12 +28,12 @@
 #include <nupm/rc_alloc_lb.h> /* Rca_LB */
 #include <nupm/region_descriptor.h>
 
-#include <algorithm> /* mini, swap */
+#include <algorithm> /* min, swap */
 #include <cstddef> /* size_t */
-#include <string>
 
 struct heap_rc_ephemeral
 	: private common::log_source
+	, public injectee
 {
 private:
 	using byte_span = common::byte_span;
@@ -60,6 +61,7 @@ private:
 	void add_managed_region(const byte_span &r);
 public:
 	explicit heap_rc_ephemeral(unsigned debug_level, string_view id, string_view backing_file);
+	virtual ~heap_rc_ephemeral() {}
 
 	void add_managed_region(const byte_span &r_full, const byte_span &r_heap, unsigned numa_node);
 	nupm::region_descriptor get_managed_regions() const { return _managed_regions; }
@@ -93,7 +95,7 @@ public:
 
 	std::size_t allocated() const {  return _allocated; }
 	std::size_t capacity() const { return _capacity; };
-	void inject_allocation(void *p, std::size_t sz, unsigned numa_node);
+	void inject_allocation(void *p, std::size_t sz, unsigned numa_node) override;
 	void *allocate(std::size_t sz, unsigned numa_node, std::size_t alignment);
 	void *allocate_tracked(std::size_t sz, unsigned numa_node, std::size_t alignment);
 	void free(void *p, std::size_t sz, unsigned numa_node);

@@ -23,6 +23,7 @@
 #include "persistent.h"
 #include "perishable_expiry.h"
 #include <common/pointer_cast.h>
+#include <common/perf/tm.h>
 
 #include <algorithm> /* fill_n, copy */
 #include <array>
@@ -30,6 +31,7 @@
 #include <cstddef> /* size_t */
 #include <cstring> /* memcpy */
 #include <memory> /* allocator_traits */
+#include <tuple> /* make_from_tuple */
 
 struct fixed_data_location_t {};
 constexpr fixed_data_location_t fixed_data_location = fixed_data_location_t();
@@ -338,6 +340,14 @@ template <typename T, std::size_t SmallLimit, typename Allocator>
 		 * forward_as_tuple, and the string is an element of a tuple, and std::tuple
 		 * (unlike pair) does not support piecewise_construct.
 		 */
+#if 0 && 201703L <= __cplusplus /* this may work, some day */
+		template <typename Tuple>
+			persist_fixed_string(
+				Tuple &&t
+			);
+			: persist_fixed_string(std::make_from_tuple<persist_fixed_string<T, SmallLimit, Allocator>>(std::move(t)))
+		{}
+#else
 		template <typename IT, typename AL>
 			persist_fixed_string(
 				std::tuple<AK_FORMAL IT&, IT&&, lock_state &&, AL>&& p_
@@ -357,6 +367,7 @@ template <typename T, std::size_t SmallLimit, typename Allocator>
 		 * forward_as_tuple, and the string is an element of a tuple, and std::tuple
 		 * (unlike pair) does not support piecewise_construct.
 		 */
+
 		template <typename AL>
 			persist_fixed_string(
 				std::tuple<AK_FORMAL const std::size_t &, lock_state &&, AL>&& p_
@@ -373,8 +384,9 @@ template <typename T, std::size_t SmallLimit, typename Allocator>
 
 		/* Needed because the persist_fixed_string arguments are sometimes conveyed via
 		 * forward_as_tuple, and the string is an element of a tuple, and std::tuple
-		 * (unlike pair) does not support picecewise_construct.
+		 * (unlike pair) does not support piecewise_construct.
 		 */
+
 		template <typename AL>
 			persist_fixed_string(
 				std::tuple<AK_FORMAL const fixed_data_location_t &, const std::size_t &, lock_state &&, AL>&& p_
@@ -391,6 +403,23 @@ template <typename T, std::size_t SmallLimit, typename Allocator>
 			{
 			}
 
+		template <typename AL>
+			persist_fixed_string(
+				std::tuple<AK_FORMAL const fixed_data_location_t &, const std::size_t &, const std::size_t &, lock_state &&, AL>&& p_
+			)
+				: persist_fixed_string(
+					std::get<0>(p_)
+					, std::get<1>(p_)
+					, std::get<2>(p_)
+					, std::get<3>(p_)
+					, std::get<4>(p_)
+#if AK_USED
+					, std::get<5>(p_)
+#endif
+				)
+			{
+			}
+#endif
 		template <typename AL>
 			persist_fixed_string(
 				AK_ACTUAL
@@ -611,7 +640,7 @@ template <typename T, std::size_t SmallLimit, typename Allocator>
 
 		void deconstitute() const
 		{
-#if USE_CC_HEAP == 3
+#if HEAP_RECONSTITUTE
 			if ( ! is_inline() )
 			{
 				/* used only by the table_base destructor, at which time
@@ -637,7 +666,7 @@ template <typename T, std::size_t SmallLimit, typename Allocator>
 					 * it would not need restoration. Arrange that.
 					 */
 					new (&const_cast<persist_fixed_string *>(this)->_outline.al()) allocator_char_type(al_);
-#if USE_CC_HEAP == 3
+#if HEAP_RECONSTITUTE
 					using reallocator_char_type =
 						typename std::allocator_traits<AL>::template rebind_alloc<char>;
 					auto alr = reallocator_char_type(al_);
@@ -742,13 +771,14 @@ template <typename T, std::size_t SmallLimit, typename Allocator>
 		bool is_locked_exclusive() const { return lockable() && _outline.ptr()->is_locked_exclusive(); }
 		bool is_locked() const { return lockable() && _outline.ptr()->is_locked(); }
 		template <typename AL>
-			void flush_if_locked_exclusive(AL al_) const
+			void flush_if_locked_exclusive(TM_ACTUAL AL al_) const
 			{
 				if ( lockable() && _outline.ptr()->is_locked_exclusive() )
 				{
 #if 0
 					PLOG("FLUSH %p: %zu", _outline.ptr()->data(), _outline.size());
 #endif
+					TM_SCOPE()
 					_outline.ptr()->persist_this(al_);
 				}
 				else

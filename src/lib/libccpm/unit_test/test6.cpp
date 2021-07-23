@@ -1,5 +1,5 @@
 /*
-   Copyright [2017-2020] [IBM Corporation]
+   Copyright [2017-2021] [IBM Corporation]
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
    You may obtain a copy of the License at
@@ -19,8 +19,8 @@
 #include <gtest/gtest.h>
 #pragma GCC diagnostic pop
 
-#include <ccpm/value_tracked.h>
 #include <ccpm/container_cc.h>
+#include <ccpm/value_tracked.h>
 #include <common/profiler.h>
 #include <common/utils.h>
 #pragma GCC diagnostic push
@@ -32,6 +32,7 @@
 #include <EASTL/vector.h>
 #pragma GCC diagnostic pop
 #include <api/kvstore_itf.h>
+#include <libpmem.h>
 
 #include <algorithm> // equal, reverse
 #include <cstddef> // size_t
@@ -40,13 +41,27 @@
 #include <memory> // shared_ptr
 #include <string> // string
 
-#include <ccpm/container_cc.h>
 
 using namespace component;
 
 using logged_int = ccpm::value_tracked<int, ccpm::tracker_log>;
 using logged_ptr_to_int = ccpm::value_tracked<int *, ccpm::tracker_log>;
 using logged_shared_ptr_to_int = ccpm::value_tracked<std::shared_ptr<int>, ccpm::tracker_log>;
+
+struct persister final
+	: public ccpm::persister
+{
+	void persist(common::byte_span s) override
+	{
+		::pmem_persist(::base(s), ::size(s));
+	}
+};
+
+namespace
+{
+	persister p6{};
+}
+
 
 // The fixture for testing class Foo.
 class Log_test : public ::testing::Test
@@ -147,7 +162,9 @@ TEST_F(Log_test, CCVectorOfPointer)
 	component::IKVStore::key_t heap_lock{};
 	{
 		/* An odd "insert or locate" interface. */
-		auto r = kvstore->lock(pool, "heap", component::IKVStore::STORE_LOCK_WRITE, heap_area, heap_size, heap_lock);
+    size_t alignment = 0;
+		auto r = kvstore->lock(pool, "heap", component::IKVStore::STORE_LOCK_WRITE,
+                           heap_area, heap_size, alignment, heap_lock);
 		ASSERT_EQ(S_OK_CREATED, r);
 	}
 
@@ -161,21 +178,18 @@ TEST_F(Log_test, CCVectorOfPointer)
 	std::size_t vector_size = sizeof(cc_vector);
 	component::IKVStore::key_t container_lock{};
 	{
+    size_t alignment = 0;
 		/* An odd "insert or locate" interface. */
-		auto r = kvstore->lock(pool, "vector", component::IKVStore::STORE_LOCK_WRITE, vector_area, vector_size, container_lock);
+		auto r = kvstore->lock(pool, "vector", component::IKVStore::STORE_LOCK_WRITE,
+                           vector_area, vector_size, alignment, container_lock);
 		ASSERT_EQ(S_OK_CREATED, r);
 	}
 
 	common::profiler pr("test6-vp-cpu-" + store_map::impl->name + ".profile");
 	{
-		ccpm::cca mr(
-          ccpm::region_vector_t(
-            ccpm::region_vector_t::value_type(
-              common::make_byte_span(heap_area, heap_size)
-            )
-          )
-        );
-		auto ccv = new (vector_area) cc_vector(mr);
+		ccpm::region_span::value_type v[1] = { common::make_byte_span(heap_area, heap_size) };
+		ccpm::cca mr(&p6, v);
+		auto ccv = new (vector_area) cc_vector(&p6, mr);
 
 		for ( int i = 0; i != 1000000; ++i )
 		{

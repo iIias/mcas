@@ -15,6 +15,8 @@
 #ifndef MCAS_HSTORE_H_
 #define MCAS_HSTORE_H_
 
+#include <api/kvstore_itf.h>
+
 #include "hstore_config.h"
 
 #if THREAD_SAFE_HASH == 1
@@ -44,7 +46,6 @@
 #include "pstr_equal.h"
 #include "pstr_hash.h"
 
-#include <api/kvstore_itf.h>
 #include <common/logging.h>
 #include <common/string_view.h>
 #include <map>
@@ -110,7 +111,15 @@ public:
    * Constructor
    *
    */
-  hstore(unsigned debug_level, const string_view owner, const string_view name, std::unique_ptr<dax_manager> &&mgr);
+  hstore(
+		unsigned debug_level
+#if HEAP_MM
+		, string_view mm_plugin_path
+#endif
+		, string_view owner
+		, string_view name
+		, std::unique_ptr<dax_manager> &&mgr
+	);
 
   /**
    * Destructor
@@ -210,7 +219,8 @@ public:
                 const std::string& key,
                 lock_type_t type,
                 void*& out_value,
-                std::size_t& out_value_len,
+                std::size_t& inout_value_len,
+                std::size_t value_alignment,
                 key_t& out_key,
                 const char ** out_key_ptr) override;
 
